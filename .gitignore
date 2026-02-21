@@ -1,0 +1,30 @@
+# ros2
+build/
+install/
+log/
+
+# python bytecode files
+__pycache__/
+*.pyc
+*.pyo
+*.pyd
+
+# virtual environments
+venv/
+env/
+*.venv
+
+# environmental files
+.env
+.env.*
+
+# vsc settings
+.vscode/
+.idea/
+*.sublime-project
+*.sublime-workspace
+
+# log files
+*.log
+*.sqlite
+*.db
