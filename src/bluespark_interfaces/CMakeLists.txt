@@ -13,6 +13,7 @@ find_package(std_msgs REQUIRED)
 rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedObject.msg"
   "msg/DetectedObjectArray.msg"
+  "srv/SetRCOverride.srv"
   DEPENDENCIES std_msgs
 )
 # uncomment the following section in order to fill in

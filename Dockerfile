@@ -4,6 +4,8 @@ RUN apt-get update && apt-get install -y \
     python3-pip \
     libgl1-mesa-glx \
     python3-colcon-common-extensions \
+    ros-humble-mavros \
+    ros-humble-mavros-msgs \
     && rm -rf /var/lib/apt/lists/*
 
 COPY requirements.txt /tmp/requirements.txt
