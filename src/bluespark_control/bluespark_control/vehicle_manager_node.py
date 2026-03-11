@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from mavros_msgs.srv import CommandBool, SetMode
 from mavros_msgs.msg import State
+from std_srvs.srv import SetBool
 
 """
 
@@ -11,7 +12,7 @@ with wide event and error handling.
 
 """
 
-#TODO dodać kurwa launchfile'a.
+#TODO dodać launchfile'a.
 
 class StateListener(Node):
     def __init__(self):
@@ -30,19 +31,31 @@ class StateListener(Node):
     def state_callback(self, msg):
         self.current_state = msg
 
-        self.get_logger().info(f"Połączony: {msg.connected}, Uzbrojony: {msg.armed}, Tryb: {msg.mode}")
+        self.get_logger().info(f"Connected: {msg.connected}, Armed: {msg.armed}, Mode: {msg.mode}")
 
 
 class ArmingNode(Node):
+    """
+    Creating /mavros/set_arming services which takes true or false.
+    """
     def __init__(self):
         super().__init__('arming_node')
 
         self.arm_client = self.create_client(CommandBool, '/mavros/cmd/arming')
+        # self.timer = self.create_timer(5.0, self.try_to_arm(True))
+
+        self.arm_service = self.create_service(
+            SetBool,
+            '/manager/set_arming',
+            self.handle_arm_request
+        )
+        self.get_logger().info("Arm service ready to take orders.")
 
 
     def try_to_arm(self, state: bool):
+        #self.timer.cancel()
         if not self.arm_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('Serwis armowania niedostępny.')
+            self.get_logger().warn('Arming service unreachable.')
             return
 
         req = CommandBool.Request()
@@ -57,23 +70,47 @@ class ArmingNode(Node):
         try:
             response = future.result()
             if response.success:
-                self.get_logger().info("Komenda przyjęta przez drona.")
+                self.get_logger().info("Command received.")
             else:
-                self.get_logger().info("Komenda nie przyjęta przez drona.")
+                self.get_logger().info("Command declined.")
         except Exception as e:
-            self.get_logger().error(f"Wywołanie serwisu wyrzuciło błąd: {e}")
+            self.get_logger().error(f"Service call threw error: {e}")
 
+    def handle_arm_request(self, request, response):
+        requested_state = request.data
+
+        if requested_state:
+            self.get_logger().info("Arming...")
+        else:
+            self.get_logger().info("Disarming...")
+
+        self.try_to_arm(requested_state)
+
+        response.success = True
+        response.message = f"Command passed to mavros."
+
+        return response
 
 class SetModeManual(Node):
+    """
+    Creating setting mode node, which takes modes in CAPITAL LETTERS.
+    """
     def __init__(self):
         super().__init__('set_manual_mode')
 
         self.setmode_client = self.create_client(SetMode, '/mavros/set_mode')
+        #self.timer = self.create_timer(5.0, self.set_flight_mode)
 
+        self.setmode_service = self.create_service(
+            SetMode,
+            '/manager/set_mode',
+            self.handle_setmode_request
+        )
     
-    def set_flight_mode(self, mode_name: str):
+    def set_flight_mode(self, mode_name: str = "GUIDED"):
+        #self.timer.cancel()
         if not self.setmode_client.wait_for_service(timeout_sec=1.0):
-            self.get_logger().warn('Serwis setmode niedostępny.')
+            self.get_logger().warn('Setmode service unreachable.')
             return
         
         req = SetMode.Request()
@@ -88,11 +125,23 @@ class SetModeManual(Node):
         try:
             response = future.result()
             if response.mode_sent:
-                self.get_logger().info("Komenda przyjęta przez drona.")
+                self.get_logger().info("Command receieved.")
             else:
-                self.get_logger().info("Komenda nie przyjęta przez drona.")
+                self.get_logger().info("Command declined.")
         except Exception as e:
-            self.get_logger().error(f"Wywołanie serwisu wyrzuciło błąd: {e}")
+            self.get_logger().error(f"Service call threw error: {e}")
+
+    
+    def handle_setmode_request(self, request, response):
+        requested_mode = request.custom_mode
+
+        self.get_logger().info("Request collected. Seting mode...")
+
+        self.set_flight_mode(requested_mode)
+
+        response.mode_sent = True
+
+        return response
 
 
 def main(args=None):
