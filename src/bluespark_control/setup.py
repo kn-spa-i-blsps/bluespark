@@ -15,7 +15,7 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='Jakub Bałenkowski',
+    maintainer='Jakub Balenkowski',
     maintainer_email='jakubbalenkowski@gmail.com',
     description='Package controlling BlueROV robot via RC Override',
     license='TODO: License decaration',

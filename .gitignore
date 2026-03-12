@@ -3,6 +3,9 @@ build/
 install/
 log/
 
+# ml models
+*.pt
+
 # python bytecode files
 __pycache__/
 *.pyc
