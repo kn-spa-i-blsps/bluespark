@@ -25,7 +25,7 @@
             "real_width": 0.50,
             "description": "Person - 175cm H, 50cm W"
         },
-        "gate": {
+        "gate_main": {
             "real_height": 1.0,
             "real_width": 1.0,
             "description": "Race Gate - 50cm H, 100cm W"
