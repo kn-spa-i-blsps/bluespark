@@ -117,11 +117,12 @@ class MovementNode(Node):
             self.stop_and_search()
             return
 
+        target = None
         for obj in msg.objects:
             if obj.label == "person":
                 target = obj
                 break
-
+        
         if target is None:
             self.get_logger().info("No person detected among objects")
             self.stop_and_search()

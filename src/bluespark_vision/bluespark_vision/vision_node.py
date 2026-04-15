@@ -19,7 +19,7 @@ class VisionNode(Node):
         )
 
         pkg_share_dir = get_package_share_directory("bluespark_vision")
-        model_name = "jedy8.pt"
+        model_name = "yolo11n.pt"
         model_path = os.path.join(pkg_share_dir, "ml_models", model_name)
         self.detector = ObjectDetector(str(model_path))
         self.distance_calc = SimpleDistanceCalculator()
