@@ -29,6 +29,9 @@ class UniversalCamera:
         self.init_camera()
 
     def init_camera(self):
+        if self.mode == "tcp":
+            self._init_cv_camera("tcp://127.0.0.1:5000")
+            return
         use_rpi = False
         if self.mode == "rpi":
             if not PICAM2_AVAILABLE:
