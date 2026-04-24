@@ -28,9 +28,18 @@ start_all() {
     ros2 run bluespark_navigation movement_node &
     PIDS+=($!)
     sleep 2 
-
+    
     ros2 run bluespark_navigation depth_hold_node &
     PIDS+=($!)
+
+    echo "-- Czekam 5 sekund na polaczenie z MAVROS... --"
+    sleep 5
+    
+    echo "-- Ustawiam tryb ALT_HOLD i uzbrajam drona --"
+    ros2 service call /manager/set_mode mavros_msgs/srv/SetMode "{custom_mode: 'ALT_HOLD'}"
+    sleep 1
+    ros2 service call /manager/set_arming std_srvs/srv/SetBool "{data: true}"
+    
 
     echo "-- Wszystkie wezly wstaly --"
 }
