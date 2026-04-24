@@ -27,6 +27,10 @@ start_all() {
 
     ros2 run bluespark_navigation movement_node &
     PIDS+=($!)
+    sleep 2 
+
+    ros2 run bluespark_navigation depth_hold_node &
+    PIDS+=($!)
 
     echo "-- Wszystkie wezly wstaly --"
 }
@@ -38,6 +42,7 @@ stop_all() {
     pkill -f "vehicle_manager_node" 2>/dev/null
     pkill -f "vision_node" 2>/dev/null
     pkill -f "movement_node" 2>/dev/null
+    pkill -f "depth_hold_node" 2>/dev/null
 
     sleep 2
 

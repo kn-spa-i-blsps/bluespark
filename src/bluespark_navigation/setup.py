@@ -24,7 +24,8 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'movement_node = bluespark_navigation.movement_node:main'
+            'movement_node = bluespark_navigation.movement_node:main',
+            'depth_hold_node = bluespark_navigation.depth_hold_node:main'
         ],
     },
 )
