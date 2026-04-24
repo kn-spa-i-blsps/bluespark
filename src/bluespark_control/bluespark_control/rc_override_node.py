@@ -13,7 +13,7 @@ class RCOverrideNode(Node):
 
         self.rc_channels = [0] * 18
 
-        self.rc_pub = self.create_publisher(OverrideRCIn, '/mavros/rv/override', 10)
+        self.rc_pub = self.create_publisher(OverrideRCIn, '/mavros/rc/override', 10)
 
         self.timer = self.create_timer(0.1, self.publish_rc_state)
 

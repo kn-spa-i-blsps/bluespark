@@ -10,7 +10,7 @@ class DepthHoldNode(Node):
     def __init__(self):
         super().__init__('depth_hold_node')
         # TODO: zmienic na topic od mission plannera
-        self.target_depth = -2.0
+        self.target_depth = -0.3
 
         self.deadband = 0.1
 

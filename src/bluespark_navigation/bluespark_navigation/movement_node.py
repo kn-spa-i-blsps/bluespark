@@ -89,7 +89,7 @@ class MovementNode(Node):
     def stop_and_search(self):
         self.current_state = self.STATE_SEARCHING
         self.control_state.set_pwm("surge", STOP_PWM)
-        self.control_state.set_pwm("heave", STOP_PWM)
+        #self.control_state.set_pwm("heave", STOP_PWM)
         self.control_state.set_pwm("yaw", 1550)
         changes = self.control_state.get()
         for axis, pwm in changes.items():
