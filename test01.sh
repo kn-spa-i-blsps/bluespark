@@ -13,6 +13,10 @@ start_all() {
 
     echo "-- Startuje wezly --"
 
+    ros2 launch mavros apm.launch fcu_url:=serial:///dev/ttyACM0:115200 &
+    PIDS+=($!)
+    sleep 3
+
     ros2 run bluespark_control rc_override_node &
     PIDS+=($!)
     sleep 2
