@@ -4,6 +4,8 @@ from mavros_msgs.srv import CommandBool, SetMode
 from mavros_msgs.msg import State
 from std_srvs.srv import SetBool
 from rclpy.executors import ExternalShutdownException
+import os
+import signal
 import time
 
 """
@@ -160,19 +162,25 @@ def main(args=None):
     executor.add_node(arming_node)
     executor.add_node(state_listener_node)
 
-    try:
-        executor.spin()
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-    finally:
-        print("Closing, disarming auv.")
+    def sig_handler(signum, frame):
+        print("[Menedżer] Zamykanie, wymuszanie rozbrojenia robota...")
         arming_node.try_to_arm(False)
+        
         time.sleep(0.3)
-
+        
         mode_node.destroy_node()
         arming_node.destroy_node()
         state_listener_node.destroy_node()
         rclpy.shutdown()
+        os.exit(0)
+
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
+
+    try:
+        executor.spin()
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
 
 
 if __name__ == '__main__':

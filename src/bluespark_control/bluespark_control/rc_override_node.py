@@ -2,6 +2,9 @@ import rclpy
 from rclpy.node import Node
 from mavros_msgs.msg import OverrideRCIn
 from bluespark_interfaces.srv import SetRCOverride
+import signal
+import time
+import os
 
 # TODO: implement the service of arming the robot and setting
 # it to the manual mode. It has to be called always before the
@@ -83,15 +86,24 @@ class RCOverrideNode(Node):
 def main(args=None):
     rclpy.init(args=args)
     node = RCOverrideNode()
+
+    def sig_handler(signum, frame):
+        print("[RC Override] powering off engines...")
+        node.rc_channels = [0] * 18
+        node.publish_rc_state()
+        
+        time.sleep(0.2)
+        
+        node.destroy_node()
+        rclpy.shutdown()
+        os.exit(0)
+
+    signal.signal(signal.SIGINT, sig_handler)
+    signal.signal(signal.SIGTERM, sig_handler)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
         pass
-    finally:
-        node.rc_channels = [0] * 18
-        node.publish_rc_state()
-        node.destroy_node()
-        rclpy.shutdown()
 
 if __name__ == '__main__':
     main()

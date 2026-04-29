@@ -4,7 +4,7 @@ from rclpy.node import Node
 from bluespark_interfaces.srv import SetRCOverride
 from mavros_msgs.msg import State
 
-from std_msgs.msgs import Float64
+from std_msgs.msg import Float64
 
 
 STOP_PWM = 1500
