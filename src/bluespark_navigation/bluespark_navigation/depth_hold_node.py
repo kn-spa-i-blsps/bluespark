@@ -2,7 +2,8 @@ import rclpy
 from rclpy.node import Node
 
 from bluespark_interfaces.srv import SetRCOverride
-from mavros_msgs.msg import VfrHud, State
+from mavros_msgs.msg import State
+
 
 STOP_PWM = 1500
 
@@ -10,7 +11,7 @@ class DepthHoldNode(Node):
     def __init__(self):
         super().__init__('depth_hold_node')
         # TODO: zmienic na topic od mission plannera
-        self.target_depth = -0.3
+        self.target_depth = -0.7
 
         self.deadband = 0.1
 
@@ -29,7 +30,7 @@ class DepthHoldNode(Node):
 
         self.depth_sub = self.create_subscription(
             VfrHud,
-            '/mavros/vfr_hud',
+            '/current_depth',
             self.depth_callback,
             10
         )
@@ -53,7 +54,7 @@ class DepthHoldNode(Node):
         if self.current_mode != "ALT_HOLD":
             return
             
-        self.current_depth = msg.altitude
+        self.current_depth = msg.data
         error = self.target_depth - self.current_depth
 
         if abs(error) < self.deadband:
