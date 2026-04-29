@@ -60,10 +60,27 @@ stop_all() {
     pkill -f "vision_node" 2>/dev/null
     pkill -f "movement_node" 2>/dev/null
     pkill -f "depth_hold_node" 2>/dev/null
+    pkill -f "depth_estimator_node" 2>/dev/null
 
     sleep 2
 
     PIDS=()
+}
+
+stop_mavros() {
+    echo "-- Zatrzymuje MAVROS --"
+    pkill -f "mavros_node" 2>/dev/null
+    pkill -f "apm.launch" 2>/dev/null
+    sleep 1
+}
+
+disarm() {
+    echo "-- Rozbrajam drona --"
+    timeout 3 ros2 service call /manager/set_arming std_srvs/srv/SetBool "{data: false}"
+
+    echo "-- Ustawiam tryb MANUAL --"
+    timeout 3 ros2 service call /manager/set_mode mavros_msgs/srv/SetMode "{custom_mode: 'MANUAL'}" 2>/dev/null
+    sleep 1
 }
 
 check_all() {
@@ -78,7 +95,9 @@ check_all() {
 }
 
 cleanup() {
+    disarm
     stop_all
+    stop_mavros
     exit 0
 }
 trap cleanup SIGINT SIGTERM
@@ -92,6 +111,8 @@ while true; do
 
     echo "-- Wezel nie dziala. Restart --"
 
+    disarm
     stop_all
+    stop_mavros
     sleep 3
 done
