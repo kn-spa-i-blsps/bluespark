@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import FluidPressure
-from std_msgs.msgs import Float64
+from std_msgs.msg import Float64
 
 """
 Logika do obliczania głębokości z surowych danych

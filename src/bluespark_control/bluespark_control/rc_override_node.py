@@ -86,9 +86,10 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        pass
+    finally:
         node.rc_channels = [0] * 18
         node.publish_rc_state()
-    finally:
         node.destroy_node()
         rclpy.shutdown()
 
