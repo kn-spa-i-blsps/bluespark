@@ -96,7 +96,7 @@ def main(args=None):
         
         node.destroy_node()
         rclpy.shutdown()
-        os.exit(0)
+        os._exit(0)
 
     signal.signal(signal.SIGINT, sig_handler)
     signal.signal(signal.SIGTERM, sig_handler)
