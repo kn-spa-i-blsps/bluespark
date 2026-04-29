@@ -3,6 +3,8 @@ from rclpy.node import Node
 from mavros_msgs.srv import CommandBool, SetMode
 from mavros_msgs.msg import State
 from std_srvs.srv import SetBool
+from rclpy.executors import ExternalShutdownException
+import time
 
 """
 
@@ -52,11 +54,11 @@ class ArmingNode(Node):
         self.get_logger().info("Arm service ready to take orders.")
 
 
-    def try_to_arm(self, state: bool):
+    def try_to_arm(self, state: bool) -> bool:
         #self.timer.cancel()
         if not self.arm_client.wait_for_service(timeout_sec=1.0):
             self.get_logger().warn('Arming service unreachable.')
-            return
+            return False
 
         req = CommandBool.Request()
         req.value = state
@@ -64,6 +66,7 @@ class ArmingNode(Node):
         future = self.arm_client.call_async(req)
 
         future.add_done_callback(self.arm_response_callback)
+        return True
 
     
     def arm_response_callback(self, future):
@@ -159,9 +162,13 @@ def main(args=None):
 
     try:
         executor.spin()
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
         pass
     finally:
+        print("Closing, disarming auv.")
+        arming_node.try_to_arm(False)
+        time.sleep(0.3)
+
         mode_node.destroy_node()
         arming_node.destroy_node()
         state_listener_node.destroy_node()
