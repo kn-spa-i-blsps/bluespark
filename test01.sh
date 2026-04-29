@@ -25,13 +25,13 @@ start_all() {
     PIDS+=($!)
     sleep 2
 
-    ros2 run bluespark_vision vision_node &
-    PIDS+=($!)
-    sleep 2
+    # ros2 run bluespark_vision vision_node &
+    # PIDS+=($!)
+    # sleep 2
 
-    ros2 run bluespark_navigation movement_node &
-    PIDS+=($!)
-    sleep 2 
+    # ros2 run bluespark_navigation movement_node &
+    # PIDS+=($!)
+    # sleep 2 
     
     ros2 run bluespark_navigation depth_hold_node &
     PIDS+=($!)
