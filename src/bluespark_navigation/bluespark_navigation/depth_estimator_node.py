@@ -42,7 +42,7 @@ class DepthEstimatorNode(Node):
         self.current_pressure = msg.fluid_pressure
         # liczenie z użyciem ciśnienia hydrostatycznego słupa cieczy
         self.current_depth = (
-            (self.current_pressure - self.atm_pressure)/(1000*9.81)
+            (self.atm_pressure - self.current_depth)/(1000*9.81)
         )
         depth_msg = Float64()
         depth_msg.data = self.current_depth

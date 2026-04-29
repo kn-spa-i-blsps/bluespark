@@ -1,4 +1,4 @@
-sleep 15
+sleep 5
 
 source /opt/ros/humble/setup.bash
 
@@ -34,6 +34,10 @@ start_all() {
     # sleep 2 
     
     ros2 run bluespark_navigation depth_hold_node &
+    PIDS+=($!)
+    sleep 2
+
+    ros2 run bluespark_navigation depth_estimator_node &
     PIDS+=($!)
 
     echo "-- Czekam 5 sekund na polaczenie z MAVROS... --"

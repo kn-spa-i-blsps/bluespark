@@ -113,7 +113,7 @@ class MovementNode(Node):
         """
 
         if len(msg.objects) == 0:
-            self.get_logger().info("No objects detected")
+            #self.get_logger().info("No objects detected")
             self.stop_and_search()
             return
 
