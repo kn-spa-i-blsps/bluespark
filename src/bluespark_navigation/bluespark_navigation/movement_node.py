@@ -15,6 +15,7 @@ class ControlState:
     and which aren't
     """
     def __init__(self):
+        """Initializes all 6 DoFs with stop pwm values and a dirty flag"""
         self.values = {
             "pitch" : STOP_PWM,
             "roll" : STOP_PWM,
@@ -26,6 +27,7 @@ class ControlState:
         self.dirty_flags = {axis: False for axis in self.values}
 
     def set_pwm(self, axis, new_pwm):
+        """Sets pwm without sending it immediately"""
         if axis not in self.values: return
 
         new_pwm = int(new_pwm)
@@ -36,6 +38,7 @@ class ControlState:
             self.dirty_flags[axis] = True
 
     def get(self):
+        """Gives all axises that have changed and its new pwm values"""
         changes = {}
         for axis, is_dirty in self.dirty_flags.items():
             if is_dirty:
@@ -48,9 +51,9 @@ class ControlState:
 class MovementNode(Node):
     """
     Node responsible for sending pwm values to chosen axis, for
-    swimming closer to a specific target.
+    swimming closer to a specific target. 
+    TODO:  In addition it activates depth hold whenever
     """
-
     def __init__(self):
         super().__init__('movement_node')
 
@@ -61,7 +64,8 @@ class MovementNode(Node):
             self.vision_callback,
             10
         )
-
+        
+        # Creates clients for communcation with MAVROS via our SerRCOverride node
         self.control_clients = {
             "pitch": self.create_client(SetRCOverride, 'control/set_pitch'),
             "roll": self.create_client(SetRCOverride, 'control/set_roll'),
@@ -70,10 +74,10 @@ class MovementNode(Node):
             "surge": self.create_client(SetRCOverride, 'control/set_surge'),
             "sway": self.create_client(SetRCOverride, 'control/set_sway')
         }
-
         for client in self.control_clients.keys():
             while not self.control_clients[client].wait_for_service(timeout_sec=1.0):
                 self.get_logger().info(f"Waiting for RC override service {client} to become available")
+
 
         self.STATE_SEARCHING = "SEARCHING"
         self.STATE_CENTERING = "CENTERING"
@@ -87,6 +91,10 @@ class MovementNode(Node):
         self.stop_everything()
 
     def stop_and_search(self):
+        """ 
+        Changes state to searching and starts to rotate
+        trying to find a target
+        """
         self.current_state = self.STATE_SEARCHING
         self.control_state.set_pwm("surge", STOP_PWM)
         #self.control_state.set_pwm("heave", STOP_PWM)
@@ -96,6 +104,7 @@ class MovementNode(Node):
             self.send_rc_override(axis, pwm)
 
     def send_rc_override(self, axis, pwm_value):
+        """ Sents a pwm value to MAVROS via SetRCOverride for given axis """
         self.control_clients[axis].call_async(SetRCOverride.Request(pwm_value=pwm_value))
         self.get_logger().info(f"Sent RC override for {axis} to {pwm_value}")
 
@@ -108,9 +117,9 @@ class MovementNode(Node):
         Main logic of the node, the P algorithm.
         It is split for states: Centering and approaching
         and we do only one at the time
-        TODO Aktualnie czeka aż zoabczy osobę i jak zoaczy to do niej płynie
-        TODO Zrobić żeby płynął do bramki i potem jeszcze nakierowywał na jej środek
         """
+        # TODO: Aktualnie czeka aż zoabczy osobę i jak zoaczy to do niej płynie
+        # TODO: Zrobić żeby płynął do bramki i potem jeszcze nakierowywał na jej środek 
 
         if len(msg.objects) == 0:
             #self.get_logger().info("No objects detected")
@@ -131,7 +140,7 @@ class MovementNode(Node):
         TARGET_DISTANCE = 1.0
         DEADBAND_ANGLE = 10.0
 
-        # TODO tweak P parameters
+        # TODO: tweak P parameters
         Kp_yaw = 4.0
         Kp_heave = 4.0
         Kp_surge = 100.0
@@ -171,7 +180,8 @@ class MovementNode(Node):
             else:
                 self.control_state.set_pwm("heave", 1500)
 
-        # TODO Decide weather to always approach a bit or not
+            # TODO: Decide weather to always approach a bit or not
+
         # APPROACHING
         elif self.current_state == self.STATE_APPROACHING:
             self.control_state.set_pwm("yaw", STOP_PWM)
