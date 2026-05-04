@@ -174,6 +174,7 @@ class MovementNode(Node):
                 self.control_state.set_pwm("yaw", STOP_PWM)
 
             # HEAVING - UP AND DOWN (DEEPNESS)
+            # TODO: Zrobić to tak żeby wywoływać serwis depth holda w elsie
             if abs(error_heave) > DEADBAND_ANGLE:
                 heave_pwm = 1500 + (error_heave * Kp_heave)
                 self.control_state.set_pwm("heave", heave_pwm)
