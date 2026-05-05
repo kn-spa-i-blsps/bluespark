@@ -14,8 +14,8 @@ except ImportError:
 
 class UniversalCamera:
     """
-    Define which camera defice should be used based on user input
-    or whether picamera software is available (prefere picamera when 
+    Define which camera device should be used based on user input
+    or whether picamera software is available (prefer picamera when 
     no mode (or auto) is selected). Use appropriate camera device.
     """
 
