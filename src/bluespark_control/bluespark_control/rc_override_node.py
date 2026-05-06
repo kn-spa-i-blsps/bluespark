@@ -2,6 +2,7 @@ import rclpy
 from rclpy.node import Node
 from mavros_msgs.msg import OverrideRCIn
 from bluespark_interfaces.srv import SetRCOverride
+from rclpy.executors import ExternalShutdownException
 import signal
 import time
 import os
@@ -99,15 +100,16 @@ def main(args=None):
 
     try:
         rclpy.spin(node)
-    except KeyboardInterrupt:
+    except (KeyboardInterrupt, ExternalShutdownException):
+        pass
+
+    finally:
         print("\n[RC Override] Stopping engines (sending PWM 1500)...")
         
         node.rc_channels = [1500, 1500, 1500, 1500, 1500, 1500] + [0] * 12
         node.publish_rc_state()
         
         time.sleep(0.1)
-
-    finally:
         node.destroy_node()
         try:
             rclpy.shutdown()

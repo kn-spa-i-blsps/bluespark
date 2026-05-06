@@ -102,12 +102,6 @@ check_all() {
     return 0
 }
 
-cleanup() {
-    disarm
-    stop_all
-    stop_mavros
-    exit 0
-}
 trap cleanup SIGINT SIGTERM
 
 while true; do
@@ -120,7 +114,7 @@ while true; do
     echo "-- Wezel nie dziala. Restart --"
 
     disarm
-    stop_all
+    stop_all_gracefully
     stop_mavros
     sleep 3
 done
