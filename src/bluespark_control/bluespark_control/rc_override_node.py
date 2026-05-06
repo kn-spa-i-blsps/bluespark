@@ -11,6 +11,7 @@ import os
 # RCOverrideNode
 
 class RCOverrideNode(Node):
+    """ Node that holds arrays of values on all 18 RC channels and sends them"""
     def __init__(self):
         super().__init__('rc_override_node')
 
@@ -46,6 +47,8 @@ class RCOverrideNode(Node):
     to the robot.
     """
 
+    #TODO: verify the numbers of channels in RC override, cause they could
+    #have cause the undefined behaviour during 28.04 tests
 
     def cb_pitch(self, request, response):
         self.rc_channels[0] = request.pwm_value
@@ -81,6 +84,8 @@ class RCOverrideNode(Node):
         self.rc_channels[5] = request.pwm_value
         response.success = True
         return response
+    
+    # OTHER CHANNELS ARE 0
 
     
 def main(args=None):
@@ -103,6 +108,7 @@ def main(args=None):
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
+        #TODO: add neutralizing every rc override channel
         pass
 
 if __name__ == '__main__':
