@@ -92,25 +92,27 @@ def main(args=None):
     rclpy.init(args=args)
     node = RCOverrideNode()
 
-    def sig_handler(signum, frame):
-        print("[RC Override] powering off engines...")
-        node.rc_channels = [0] * 18
-        node.publish_rc_state()
-        
-        time.sleep(0.2)
-        
-        node.destroy_node()
-        rclpy.shutdown()
-        os._exit(0)
+    def handle_sigterm(signum, frame):
+        raise KeyboardInterrupt()
+    
+    signal.signal(signal.SIGTERM, handle_sigterm)
 
-    signal.signal(signal.SIGINT, sig_handler)
-    signal.signal(signal.SIGTERM, sig_handler)
     try:
         rclpy.spin(node)
     except KeyboardInterrupt:
-        #TODO: add neutralizing every rc override channel
-        pass
+        print("\n[RC Override] Stopping engines (sending PWM 1500)...")
+        
+        node.rc_channels = [1500, 1500, 1500, 1500, 1500, 1500] + [0] * 12
+        node.publish_rc_state()
+        
+        time.sleep(0.1)
+
+    finally:
+        node.destroy_node()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     main()
-

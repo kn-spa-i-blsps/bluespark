@@ -175,33 +175,32 @@ def main(args=None):
     arming_node = ArmingNode()
     state_listener_node = StateListener()
     
-
     executor = rclpy.executors.SingleThreadedExecutor()
-
     executor.add_node(mode_node)
     executor.add_node(arming_node)
     executor.add_node(state_listener_node)
 
-    def sig_handler(signum, frame):
-        print("[Menedżer] Zamykanie, wymuszanie rozbrojenia robota...")
-        arming_node.try_to_arm(False)
-        
-        time.sleep(0.3)
-        
-        mode_node.destroy_node()
-        arming_node.destroy_node()
-        state_listener_node.destroy_node()
-        rclpy.shutdown()
-        os._exit(0)
-
-    signal.signal(signal.SIGINT, sig_handler)
-    signal.signal(signal.SIGTERM, sig_handler)
+    def handle_sigterm(signum, frame):
+        raise KeyboardInterrupt()
+    
+    signal.signal(signal.SIGTERM, handle_sigterm)
 
     try:
         executor.spin()
-    except (KeyboardInterrupt, ExternalShutdownException):
-        pass
-
+    except KeyboardInterrupt:
+        print("\n[Vehicle_Manager] Closing, disarming robot...")
+        arming_node.try_to_arm(False)
+        
+        executor.spin_once(timeout_sec=0.5)
+        
+    finally:
+        mode_node.destroy_node()
+        arming_node.destroy_node()
+        state_listener_node.destroy_node()
+        try:
+            rclpy.shutdown()
+        except Exception:
+            pass
 
 if __name__ == '__main__':
     main()

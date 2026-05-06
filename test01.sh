@@ -52,19 +52,27 @@ start_all() {
     echo "-- Wszystkie wezly wstaly --"
 }
 
-stop_all() {
-    echo "-- Zatrzymuje dzialanie wszystkich wezlow --"
+stop_all_gracefully() {
+    echo "-- Wysyłam sygnał SIGINT do węzłów (prosze je o wyłączenie) --"
 
-    pkill -f "rc_override_node" 2>/dev/null
-    pkill -f "vehicle_manager_node" 2>/dev/null
-    pkill -f "vision_node" 2>/dev/null
-    pkill -f "movement_node" 2>/dev/null
-    pkill -f "depth_hold_node" 2>/dev/null
-    pkill -f "depth_estimator_node" 2>/dev/null
+    pkill -SIGINT -f "rc_override_node" 2>/dev/null
+    pkill -SIGINT -f "vehicle_manager_node" 2>/dev/null
+    pkill -SIGINT -f "depth_hold_node" 2>/dev/null
+    pkill -SIGINT -f "depth_estimator_node" 2>/dev/null
 
     sleep 2
 
-    PIDS=()
+    pkill -f "rc_override_node" 2>/dev/null
+    pkill -f "vehicle_manager_node" 2>/dev/null
+    pkill -f "depth_hold_node" 2>/dev/null
+    pkill -f "depth_estimator_node" 2>/dev/null
+}
+
+cleanup() {
+    echo "-- Otrzymano Ctrl+C w terminalu --"
+    stop_all_gracefully
+    stop_mavros
+    exit 0
 }
 
 stop_mavros() {
