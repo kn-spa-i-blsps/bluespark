@@ -1,7 +1,5 @@
 sleep 5
 
-source /opt/ros/humble/setup.bash
-
 WORKSPACE=$(dirname $(realpath $0))
 source $WORKSPACE/install/setup.bash
 
