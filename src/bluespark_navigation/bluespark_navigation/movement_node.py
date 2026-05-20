@@ -8,6 +8,8 @@ from bluespark_interfaces.srv import SetRCOverride
 
 STOP_PWM = 1500
 
+# FIXME: Add arming and more from control_node
+
 class ControlState:
     """
     Class to store the current state of the control system.
