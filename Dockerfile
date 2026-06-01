@@ -14,10 +14,13 @@ RUN apt-get update && apt-get install -y \
     ros-humble-mavros \
     ros-humble-mavros-msgs \
     ros-humble-mavros-extras \
+    ros-humble-py-trees \
+    ros-humble-py-trees-ros \
     python3-opencv \
     ros-humble-vision-opencv \
     ros-humble-cv-bridge \
     && rm -rf /var/lib/apt/lists/*
+
 
 RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh \
     && chmod +x install_geographiclib_datasets.sh \
@@ -25,9 +28,8 @@ RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/
     && rm install_geographiclib_datasets.sh
 
 # Heavy requirements that do not change often.
-COPY steady_requirements.txt /tmp/steady_requirements.txt
-RUN pip3 install -r /tmp/steady_requirements.txt MAVProxy
-
+RUN pip3 install --upgrade pip && \
+    pip3 install MAVProxy opencv-python ultralytics numpy
 # Lighter or more susceptible to change requirements.
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt
