@@ -25,7 +25,7 @@ def create_mission_tree():
     mission = Sequence(name="Blue Spark Orbital Mission", memory=True)
 
     # 1. Pre-flight Setup
-    mission.add_child(SetFlightMode(name="Set MANUAL Mode", mode="MANUAL"))
+    mission.add_child(SetFlightMode(name="Set MANUAL Mode", mode="ALT_HOLD"))
     mission.add_child(ArmRobot(name="Arm Thrusters", arm=True))
 
     # 2. Dive (Heave < 1500 is downward movement in ArduSub)
