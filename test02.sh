@@ -1,0 +1,129 @@
+#!/bin/bash
+sleep 5
+
+WORKSPACE=$(dirname $(realpath $0))
+source $WORKSPACE/install/setup.bash
+
+PIDS=()
+
+start_all() {
+    PIDS=()
+
+    echo "-- Startuje wezly --"
+
+    # ros2 launch mavros apm.launch fcu_url:=serial:///dev/ttyACM0:115200 &
+    # PIDS+=($!)
+    # sleep 3
+
+    ros2 run bluespark_control rc_override_node &
+    PIDS+=($!)
+    sleep 2
+
+    ros2 run bluespark_control vehicle_manager_node &
+    PIDS+=($!)
+    sleep 2
+
+    # ros2 run bluespark_vision vision_node &
+    # PIDS+=($!)
+    # sleep 2
+
+    # ros2 run bluespark_navigation movement_node &
+    # PIDS+=($!)
+    # sleep 2 
+    
+    # ros2 run bluespark_navigation depth_hold_node &
+    # PIDS+=($!)
+    # sleep 2
+
+    # ros2 run bluespark_navigation depth_estimator_node &
+    # PIDS+=($!)
+    # sleep 2
+
+    
+
+    echo "-- Czekam 5 sekund na polaczenie z MAVROS... --"
+    sleep 5
+    
+    # --- NOWY WĘZEŁ: py_trees (Behavior Trees) ---
+    # UWAGA: Zmień 'bluespark_behavior' i 'behavior_tree_node' na właściwe nazwy z repozytorium
+    echo "-- Startuje wezel py_trees (Behavior Trees) --"
+    ros2 run bluespark_autonomy autonomy_node &
+    PIDS+=($!)
+    # ---------------------------------------------
+    # echo "-- Ustawiam tryb ALT_HOLD i uzbrajam drona --"
+    # ros2 service call /manager/set_mode mavros_msgs/srv/SetMode "{custom_mode: 'ALT_HOLD'}"
+    # sleep 1
+    # ros2 service call /manager/set_arming std_srvs/srv/SetBool "{data: true}"
+    
+    echo "-- Wszystkie wezly wstaly --"
+}
+
+stop_all_gracefully() {
+    echo "-- Wysyłam sygnał SIGINT do węzłów (prosze je o wyłączenie) --"
+
+    pkill -SIGINT -f "rc_override_node" 2>/dev/null
+    pkill -SIGINT -f "vehicle_manager_node" 2>/dev/null
+    pkill -SIGINT -f "depth_hold_node" 2>/dev/null
+    pkill -SIGINT -f "depth_estimator_node" 2>/dev/null
+    # Zamykanie nowego węzła
+    pkill -SIGINT -f "autonomy_node" 2>/dev/null
+
+    sleep 2
+
+    # Ostateczne zabicie procesów, jeśli nie zareagowały na SIGINT
+    pkill -f "rc_override_node" 2>/dev/null
+    pkill -f "vehicle_manager_node" 2>/dev/null
+    pkill -f "depth_hold_node" 2>/dev/null
+    pkill -f "depth_estimator_node" 2>/dev/null
+    pkill -f "autonomy_node" 2>/dev/null
+}
+
+cleanup() {
+    echo "-- Otrzymano Ctrl+C w terminalu --"
+    stop_all_gracefully
+    # stop_mavros
+    exit 0
+}
+
+# stop_mavros() {
+#     echo "-- Zatrzymuje MAVROS --"
+#     pkill -f "mavros_node" 2>/dev/null
+#     pkill -f "apm.launch" 2>/dev/null
+#     sleep 1
+# }
+
+disarm() {
+    echo "-- Rozbrajam drona --"
+    timeout 3 ros2 service call /manager/set_arming std_srvs/srv/SetBool "{data: false}"
+
+    echo "-- Ustawiam tryb MANUAL --"
+    timeout 3 ros2 service call /manager/set_mode mavros_msgs/srv/SetMode "{custom_mode: 'MANUAL'}" 2>/dev/null
+    sleep 1
+}
+
+check_all() {
+    for pid in "${PIDS[@]}"; do
+        if ! kill -0 "$pid" 2>/dev/null; then
+            echo "-- Wezel o PID $pid nie zyje --"
+            return 1
+        fi
+    done
+    return 0
+}
+
+trap cleanup SIGINT SIGTERM
+
+while true; do
+    start_all
+
+    while check_all; do
+        sleep 1
+    done
+
+    echo "-- Wezel nie dziala. Restart --"
+
+    disarm
+    stop_all_gracefully
+    # stop_mavros
+    sleep 3
+done
