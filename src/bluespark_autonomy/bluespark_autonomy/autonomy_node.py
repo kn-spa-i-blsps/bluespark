@@ -11,9 +11,9 @@ import py_trees_ros.trees
 from py_trees.composites import Sequence
 
 # Import our hardcoded actions (ensure the file is in the same directory)
-from bluespark_autonomy.hardcoded_actions import SetFlightMode, ArmRobot, MoveRC
-
-
+from behaviours.hardcoded_actions import MoveRC
+from behaviours.control import SetFlightMode, ArmRobot
+# TODO Move this mission to mission folder, and only run it here
 def create_mission_tree():
     """
     Builds the main behavior tree consisting of an action sequence.
