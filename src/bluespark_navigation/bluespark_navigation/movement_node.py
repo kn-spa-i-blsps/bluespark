@@ -133,7 +133,7 @@ class MovementNode(Node):
             if obj.label == "person":
                 target = obj
                 break
-        
+
         if target is None:
             self.get_logger().info("No person detected among objects")
             self.stop_and_search()
