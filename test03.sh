@@ -15,6 +15,8 @@ WORKSPACE=$(dirname "$(realpath "$0")")
 source "$WORKSPACE/install/setup.bash"
 
 PIDS=()
+CAMERA_LOGGER_PID=""
+CAMERA_LOGGER_SCRIPT="$HOME/camera_logger.py"
 
 # Ile razy z rzedu wezel moze paść szybciej niz MIN_UPTIME zanim sie poddamy
 MAX_FAST_CRASHES=5
@@ -23,6 +25,14 @@ fast_crash_count=0
 
 start_all() {
     PIDS=()
+
+    echo "-- Startuje camera_logger --"
+    if [ -f "$CAMERA_LOGGER_SCRIPT" ]; then
+        python3 "$CAMERA_LOGGER_SCRIPT" &
+        CAMERA_LOGGER_PID=$!
+    else
+        echo "-- UWAGA: nie znaleziono $CAMERA_LOGGER_SCRIPT, pomijam logger --"
+    fi
 
     echo "-- Startuje wezly --"
 
@@ -72,6 +82,7 @@ stop_all_gracefully() {
     pkill -SIGINT -f "depth_hold_node" 2>/dev/null
     pkill -SIGINT -f "depth_estimator_node" 2>/dev/null
     pkill -SIGINT -f "autonomy_node" 2>/dev/null
+    [ -n "$CAMERA_LOGGER_PID" ] && kill -SIGINT "$CAMERA_LOGGER_PID" 2>/dev/null
 
     sleep 2
 
@@ -81,6 +92,8 @@ stop_all_gracefully() {
     pkill -f "depth_hold_node" 2>/dev/null
     pkill -f "depth_estimator_node" 2>/dev/null
     pkill -f "autonomy_node" 2>/dev/null
+    [ -n "$CAMERA_LOGGER_PID" ] && kill "$CAMERA_LOGGER_PID" 2>/dev/null
+    CAMERA_LOGGER_PID=""
 }
 
 cleanup() {
