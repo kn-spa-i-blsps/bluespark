@@ -11,8 +11,8 @@ import py_trees_ros.trees
 from py_trees.composites import Sequence
 
 # Import our hardcoded actions (ensure the file is in the same directory)
-from behaviours.hardcoded_actions import MoveRC
-from behaviours.control import SetFlightMode, ArmRobot
+from bluespark_autonomy.behaviours.hardcoded_actions import MoveRC
+from bluespark_autonomy.behaviours.control import SetFlightMode, ArmRobot
 # TODO Move this mission to mission folder, and only run it here
 def create_mission_tree():
     """
@@ -55,44 +55,42 @@ def create_mission_tree():
 
 def main(args=None):
     rclpy.init(args=args)
-
-    # 1. Initialize the logic structure
     root_behavior = create_mission_tree()
-
-    # 2. Create the ROS 2 behavior tree manager
-    # This automatically instantiates a ROS 2 node in the background
     tree_manager = py_trees_ros.trees.BehaviourTree(root=root_behavior)
 
-    # 3. SETUP Phase
-    # We pass the ROS 2 node reference under the 'node' key.
-    # This allows the setup() methods in our custom actions to create Service Clients.
     try:
         tree_manager.setup(node=tree_manager.node, timeout=15.0)
     except Exception as e:
         tree_manager.node.get_logger().error(f"Critical setup error: {e}")
-        rclpy.shutdown()
+        rclpy.try_shutdown()
         return
 
-    # Display the mission structure in the terminal
     print("\n" + "=" * 40)
     print("BLUE SPARK MISSION STRUCTURE:")
     print(py_trees.display.unicode_tree(root=root_behavior))
     print("=" * 40 + "\n")
 
-    tree_manager.node.get_logger().info('Autonomy node ready! Starting mission execution...')
+    # Zatrzymaj tick_tock gdy misja osiagnie SUCCESS lub FAILURE
+    def on_tick(tree):
+        if tree.root.status in (py_trees.common.Status.SUCCESS,
+                                py_trees.common.Status.FAILURE):
+            tree.node.get_logger().info(
+                f"Mission finished with {tree.root.status}. Stopping.")
+            tree.interrupt()                     # zatrzymuje timer tick_tock
+            rclpy.try_shutdown()                 # konczy spin
+
+    tree_manager.add_post_tick_handler(on_tick)
+    tree_manager.node.get_logger().info('Autonomy node ready! Starting mission...')
 
     try:
-        # 4. Execution Loop (Tick-Tock)
-        # The tree ticks every 100 ms (10 Hz)
         tree_manager.tick_tock(period_ms=100)
-        rclpy.spin(tree_manager.node)
+        rclpy.spin(tree_manager.node)            # JEDEN spin, bez podwojnego
     except KeyboardInterrupt:
-        tree_manager.node.get_logger().info("Interrupt signal received (Ctrl+C). Shutting down...")
+        tree_manager.node.get_logger().info("Ctrl+C — shutting down...")
     finally:
-        # 5. Safe shutdown
-        # Triggers the terminate() function on the active node (forces PWM to 1500)
+        tree_manager.interrupt()
         tree_manager.shutdown()
-        rclpy.shutdown()
+        rclpy.try_shutdown()
 
 
 if __name__ == '__main__':
