@@ -9,6 +9,7 @@ RUN apt-get update && apt-get install -y \
     nano \
     wget \
     curl \
+    libcap-dev \
     geographiclib-tools \
     libgeographic-dev \
     ros-humble-mavros \

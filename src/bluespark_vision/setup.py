@@ -12,7 +12,6 @@ setup(
         ('share/ament_index/resource_index/packages',
             ['resource/' + package_name]),
         ('share/' + package_name, ['package.xml']),
-
         (os.path.join('share', package_name, 'calibration_files'), glob('calibration_files/*')),
         (os.path.join('share', package_name, 'ml_models'), glob('ml_models/*')),
     ],
@@ -30,6 +29,7 @@ setup(
     entry_points={
         'console_scripts': [
             'vision_node = bluespark_vision.vision_node:main',
+            'pipeline_node = bluespark_vision.pipeline_node:main',
         ],
     },
 )
