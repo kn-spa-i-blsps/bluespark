@@ -1,7 +1,6 @@
 import py_trees
 from math import hypot
 from bluespark_interfaces.srv import SetRCOverride
-from bluespark_autonomy.control_state import ControlState
 
 class ApproachGate(py_trees.behaviour.Behaviour):
     def __init__(self, name: str):
@@ -129,3 +128,34 @@ class ApproachGate(py_trees.behaviour.Behaviour):
         if axis in self.clients and self.clients[axis].service_is_ready():
             req = SetRCOverride.Request(pwm_value=int(pwm_value))
             self.clients[axis].call_async(req)
+
+class DepthControl(py_trees.behaviour.Behaviour):
+    def __init__(self, name, target_depth):
+        super().__init__(name=name)
+
+        self.depth_bb = self.attach_blackboard_client(name=self.name, namespace="depth")
+        self.depth_bb.register_key(
+            key="depth",
+            access=py_trees.common.Access.READ
+        )
+        self.target_depth = target_depth
+
+    def setup(self, **kwargs):
+        try:
+            node = kwargs['node']
+            self.rc_client = node.create_client(SetRCOverride, 'control/set_heave')
+        except KeyError:
+            self.logger.error("ROS 2 node reference missing in setup()!")
+
+    def initialise(self):
+        pass
+
+    def update(self):
+        depth = self.depth_bb.current_depth
+
+        if depth == self.target_depth:
+            return  py_trees.common.Status.SUCCESS
+        else:
+
+            self.rc_client.call_async(SetRCOverride.Request(pwm_value=1500))
+            return py_trees.common.Status.RUNNING
