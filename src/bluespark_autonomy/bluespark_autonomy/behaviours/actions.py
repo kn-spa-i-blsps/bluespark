@@ -1,7 +1,7 @@
 import py_trees
 from math import hypot
 from bluespark_interfaces.srv import SetRCOverride
-from blackboard_manager import ControlState
+from bluespark_autonomy.control_state import ControlState
 
 class ApproachGate(py_trees.behaviour.Behaviour):
     def __init__(self, name: str):
@@ -50,7 +50,7 @@ class ApproachGate(py_trees.behaviour.Behaviour):
         target = None
         # TODO: Maybe add something if more than one gate detected
         for obj in detected_objects.values():
-            if obj.label == "gate": # FIXME: add real gate label
+            if obj.label == "person": # FIXME: add real gate label
                 target = obj
                 break
 
@@ -110,7 +110,13 @@ class ApproachGate(py_trees.behaviour.Behaviour):
 
     def _stop_and_search(self):
         self.current_state = self.STATE_SEARCHING
+
         self.control_state.set_pwm("surge", ControlState.STOP_PWM)
+        self.control_state.set_pwm("sway", ControlState.STOP_PWM)
+        self.control_state.set_pwm("heave", ControlState.STOP_PWM)
+        self.control_state.set_pwm("pitch", ControlState.STOP_PWM)
+        self.control_state.set_pwm("roll", ControlState.STOP_PWM)
+
         self.control_state.set_pwm("yaw", 1550)
         self._send_rc_overrides()
 

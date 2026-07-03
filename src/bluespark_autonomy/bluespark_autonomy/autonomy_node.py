@@ -85,7 +85,6 @@ def main(args=None):
         # 4. Execution Loop (Tick-Tock)
         # The tree ticks every 100 ms (10 Hz)
         tree_manager.tick_tock(period_ms=100)
-        rclpy.spin(tree_manager.node)
     except KeyboardInterrupt:
         tree_manager.node.get_logger().info("Interrupt signal received (Ctrl+C). Shutting down...")
     finally:

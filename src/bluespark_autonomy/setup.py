@@ -26,6 +26,7 @@ setup(
     entry_points={
         'console_scripts': [
             'autonomy_node = bluespark_autonomy.autonomy_node:main',
+            'approacherTest = bluespark_autonomy.missions.approacherTest:main',
         ],
     },
 )

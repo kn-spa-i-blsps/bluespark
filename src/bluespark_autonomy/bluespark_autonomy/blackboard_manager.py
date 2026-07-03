@@ -4,8 +4,6 @@ from mavros_msgs.msg import State
 
 
 # TODO: Import the specific message type for depth data when available in bluespark_navigation
-# from std_msgs.msg import Float32
-
 class BlackboardManager:
     """
     Purpose:
@@ -64,50 +62,8 @@ class BlackboardManager:
 
     def _vision_callback(self, msg):
         detected_dict = {obj.name: obj for obj in msg.objects}
-        self.bb_client.set("vision/detected_objects", detected_dict)
+        self.vision_bb.set("vision/detected_objects", detected_dict)
 
     def _mavros_callback(self, msg):
         self.state_bb.set("is_armed", msg.armed)
         self.state_bb.set("flight_mode", msg.mode)
-
-
-
-class ControlState:
-    """
-    Class to store the current state of the control system.
-    That knows all the pwm values and which are already sent
-    and which aren't
-    """
-    STOP_PWM = 1500
-    def __init__(self):
-        """Initializes all 5 DoFs with stop pwm values and a dirty flag"""
-        self.values = {
-            "pitch" : STOP_PWM,
-            "roll" : STOP_PWM,
-            "yaw" : STOP_PWM,
-            "heave" : STOP_PWM,
-            "surge" : STOP_PWM,
-            "sway" : STOP_PWM
-        }
-        self.dirty_flags = {axis: False for axis in self.values}
-
-    def set_pwm(self, axis, new_pwm):
-        """Sets pwm without sending it immediately"""
-        if axis not in self.values: return
-
-        new_pwm = int(new_pwm)
-
-        if self.values[axis] != new_pwm:
-            new_pwm = max(1099, min(new_pwm, 1900))
-            self.values[axis] = new_pwm
-            self.dirty_flags[axis] = True
-
-    def get(self):
-        """Gives all axises that have changed and its new pwm values"""
-        changes = {}
-        for axis, is_dirty in self.dirty_flags.items():
-            if is_dirty:
-                changes[axis] = self.values[axis]
-                self.dirty_flags[axis] = False
-        return changes
-

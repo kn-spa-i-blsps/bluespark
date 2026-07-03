@@ -40,32 +40,39 @@ def create_mission_tree():
 def main(args=None):
     rclpy.init(args=args)
 
-    root_behavior = create_mission_tree()
+    # 1. Ręczne utworzenie węzła wykonawczego - od razu rozwiązuje problem z NoneType
+    node = rclpy.create_node('approacher_test_node')
 
+    # 2. Przekazujemy w 100% gotowy węzeł do Blackboard Managera
+    bb_manager = BlackboardManager(node=node)
+
+    # 3. Budujemy logikę drzewa
+    root_behavior = create_mission_tree()
     tree_manager = py_trees_ros.trees.BehaviourTree(root=root_behavior)
 
-    bb_manager = BlackboardManager(node=tree_manager.node)
-
+    # 4. Inicjalizacja drzewa (przekazujemy nasz stworzony węzeł)
     try:
-        tree_manager.setup(node=tree_manager.node, timeout=15.0)
+        # Dzięki temu setup() nie musi tworzyć węzła pod maską, tylko używa naszego
+        tree_manager.setup(node=node, timeout=15.0)
     except Exception as e:
-        tree_manager.node.get_logger().error(f"Critical setup error: {e}")
+        node.get_logger().error(f"Critical setup error: {e}")
         rclpy.shutdown()
         return
 
-    # Wyświetlenie struktury misji w terminalu
+    # Opcjonalne: Wyświetlenie drzewa w konsoli dla pewności
     print("\n" + "=" * 40)
-    print("BLUE SPARK MISSION STRUCTURE:")
+    print("BLUE SPARK APPROACH GATE TEST:")
     print(py_trees.display.unicode_tree(root=root_behavior))
     print("=" * 40 + "\n")
 
-    tree_manager.node.get_logger().info('Autonomy node ready! Starting mission execution...')
+    node.get_logger().info('Autonomy test ready! Starting execution...')
 
     try:
+        # Odpalamy timer dla drzewa (10 Hz) i kręcimy węzłem, żeby odbierał wiadomości z wizji
         tree_manager.tick_tock(period_ms=100)
-        rclpy.spin(tree_manager.node)
+        rclpy.spin(node)
     except KeyboardInterrupt:
-        tree_manager.node.get_logger().info("Interrupt signal received (Ctrl+C). Shutting down...")
+        node.get_logger().info("Interrupt signal received. Shutting down...")
     finally:
         tree_manager.shutdown()
         rclpy.shutdown()
