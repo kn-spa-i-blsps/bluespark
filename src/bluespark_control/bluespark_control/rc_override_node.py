@@ -7,10 +7,7 @@ import signal
 import time
 import os
 
-# TODO: implement the service of arming the robot and setting
-# it to the manual mode. It has to be called always before the
-# RCOverrideNode
-
+#TODO: add dead man swithc to avoid giving power to engines if exception is thrown
 class RCOverrideNode(Node):
     """ Node that holds arrays of values on all 18 RC channels and sends them"""
     def __init__(self):

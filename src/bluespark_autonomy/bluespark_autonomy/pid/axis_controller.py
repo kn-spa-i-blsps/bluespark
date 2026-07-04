@@ -7,7 +7,6 @@ from bluespark_autonomy.pid.pid import (
     make_yaw_pid,
 )
 
-STOP_PWM = 1500
 
 
 class AxisController:
@@ -21,13 +20,14 @@ class AxisController:
             "depth": make_depth_pid(),
         }
         self.dt = 1.0 / control_hz
+        self.STOP_PWM = 1500
 
     def update(self, axis, error):
         bias = self.pids[axis].update(error, self.dt)
         return self._to_pwm(bias)
 
     def _to_pwm(self, bias):
-        pwm = STOP_PWM + bias
+        pwm = self.STOP_PWM + bias
         return int(max(1100, min(1900, pwm)))
 
     def reset(self, axis):
