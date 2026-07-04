@@ -71,6 +71,8 @@ class ApproachGate(BaseRCBehaviour):
         error_heave = target.cam_v_angle_deg
         error_dist = hypot(target.pos_x, target.pos_y, target.pos_z) - TARGET_DISTANCE
 
+        # TODO: return success if target distance is achieved
+
         is_centered = (abs(error_yaw) < DEADBAND_ANGLE) and (abs(error_heave) < DEADBAND_ANGLE)
 
         self.current_state = self.STATE_APPROACHING if is_centered else self.STATE_CENTERING
