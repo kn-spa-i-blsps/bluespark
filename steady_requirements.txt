@@ -1,3 +1,3 @@
-"opencv-python<=4.10.0.84"
+opencv-python
 ultralytics
-"numpy<2.0.0"
+numpy

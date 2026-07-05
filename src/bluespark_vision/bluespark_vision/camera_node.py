@@ -1,7 +1,7 @@
 import rclpy
 from rclpy.node import Node
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
+from .image_utils import cv2_to_ros_image
 
 from .camera import UniversalCamera
 
@@ -11,7 +11,6 @@ class UniversalCameraPublisher(Node):
         
         self.camera = UniversalCamera(mode="tcp") 
         
-        self.bridge = CvBridge()
         self.publisher = self.create_publisher(Image, "/camera/image_raw", 10)
         
         timer_period = 0.033 # ~30 fps in seconds
@@ -24,9 +23,7 @@ class UniversalCameraPublisher(Node):
             # do not spam logs if TCP is emtpy
             return
 
-        msg = self.bridge.cv2_to_imgmsg(frame, encoding="bgr8")
-        msg.header.stamp = self.get_clock().now().to_msg()
-        msg.header.frame_id = "camera_link"
+        msg = cv2_to_ros_image(frame, frame_id="camera_link", stamp=self.get_clock().now().to_msg())
         self.publisher.publish(msg)
 
 def main(args=None):

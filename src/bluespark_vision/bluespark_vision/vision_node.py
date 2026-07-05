@@ -8,10 +8,10 @@ from bluespark_interfaces.msg import DetectedObject
 from bluespark_interfaces.msg import DetectedObjectArray
 from .detector import ObjectDetector
 from .simple_distance_calculator import SimpleDistanceCalculator
+from .image_utils import ros_image_to_cv2
 
 from rclpy.qos import QoSProfile, HistoryPolicy
 from sensor_msgs.msg import Image
-from cv_bridge import CvBridge
 
 class VisionNode(Node):
     def __init__(self):
@@ -26,8 +26,6 @@ class VisionNode(Node):
         self.detector = ObjectDetector(str(model_path))
         self.distance_calc = SimpleDistanceCalculator()
 
-        self.bridge = CvBridge()
-        
         qos_profile = QoSProfile(
             history=HistoryPolicy.KEEP_LAST,
             depth=1
@@ -42,7 +40,7 @@ class VisionNode(Node):
 
     def image_callback(self, msg: Image):
         try:
-            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+            frame = ros_image_to_cv2(msg)
         except Exception as e:
             self.get_logger().error(f"CvBridge Error: {e}")
             return
