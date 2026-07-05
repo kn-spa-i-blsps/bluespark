@@ -1,5 +1,6 @@
 import cv2
 import time
+import threading
 
 from .exceptions import CameraError
 
@@ -67,16 +68,43 @@ class UniversalCamera:
         except Exception as e:
             raise CameraError(f"CSI camera initialization error: {e}.")
 
+    # save only the latest frame from tcp
+    def _update_frame(self):
+        print("[CAM-THREAD] Started listening in the bakckground.")
+        while self.is_running:
+            if self.cv_cam is None or not self.cv_cam.isOpened():
+                print("[CAM-THREAD] Connection closed, trying to reconnect...")
+                if self.cv_cam:
+                    self.cv_cam.release()
+                time.sleep(1.0)
+                self.cv_cam = cv2.VideoCapture(self.source)
+                continue
+
+            ret, frame = self.cv_cam.read()
+            if ret:
+                with self.lock:
+                    self.latest_frame = frame
+            else:
+                print("[CAM-THREAD] TCP stream closed, resetting opencv...")
+                self.cv_cam.release()
+                time.sleep(0.5)
+
     def _init_cv_camera(self, source):
         self.cv_cam = cv2.VideoCapture(source)
         self.cv_cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cv_cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         if not self.cv_cam.isOpened():
             raise CameraError(f"USB camera cap is not opened.")
+    
+        self.latest_frame = None
+        self.is_running = True
+        self.lock = threading.Lock()
+
+        self.thread = threading.Thread(target=self._update_frame, daemon=True)
+        self.thread.start()
 
     def read(self):
         if self.rpi_cam:
-            # convert frame to cvt format for bbox drawing 
             try:
                 frame = self.rpi_cam.capture_array()
                 frame = cv2.cvtColor(frame, cv2.COLOR_BGRA2BGR)
@@ -84,7 +112,13 @@ class UniversalCamera:
             except:
                 return False, None
         elif self.cv_cam:
-            return self.cv_cam.read()
+            with self.lock:
+                if self.latest_frame is not None:
+                    frame_to_return = self.latest_frame.copy()
+                    self.latest_frame = None
+                    
+                    return True, frame_to_return
+            return False, None
         return False, None
 
     def release(self):

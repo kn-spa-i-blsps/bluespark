@@ -23,7 +23,7 @@ class VisionNode(Node):
         model_path = os.path.join(pkg_share_dir, "ml_models", model_name)
         self.detector = ObjectDetector(str(model_path))
         self.distance_calc = SimpleDistanceCalculator()
-        self.camera = UniversalCamera(mode="usb")  # usb/rpi/auto
+        self.camera = UniversalCamera(mode="tcp")  # usb/rpi/auto
 
         timer_period = 0.2
         self.timer = self.create_timer(timer_period, self.timer_callback)
