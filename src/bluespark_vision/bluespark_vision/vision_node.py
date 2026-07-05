@@ -8,8 +8,10 @@ from bluespark_interfaces.msg import DetectedObject
 from bluespark_interfaces.msg import DetectedObjectArray
 from .detector import ObjectDetector
 from .simple_distance_calculator import SimpleDistanceCalculator
-from .camera import UniversalCamera
 
+from rclpy.qos import QoSProfile, HistoryPolicy
+from sensor_msgs.msg import Image
+from cv_bridge import CvBridge
 
 class VisionNode(Node):
     def __init__(self):
@@ -23,20 +25,31 @@ class VisionNode(Node):
         model_path = os.path.join(pkg_share_dir, "ml_models", model_name)
         self.detector = ObjectDetector(str(model_path))
         self.distance_calc = SimpleDistanceCalculator()
-        self.camera = UniversalCamera(mode="tcp")  # usb/rpi/auto
 
-        timer_period = 0.2
-        self.timer = self.create_timer(timer_period, self.timer_callback)
+        self.bridge = CvBridge()
+        
+        qos_profile = QoSProfile(
+            history=HistoryPolicy.KEEP_LAST,
+            depth=1
+        )
+        
+        self.subscription = self.create_subscription(
+            Image,
+            "/camera/image_raw",
+            self.image_callback,
+            qos_profile
+        )
 
-    def timer_callback(self):
-        ret, frame = self.camera.read()
-        if not ret or frame is None:
-            self.get_logger().warning("No camera frame, skipping iteration.")
+    def image_callback(self, msg: Image):
+        try:
+            frame = self.bridge.imgmsg_to_cv2(msg, desired_encoding="bgr8")
+        except Exception as e:
+            self.get_logger().error(f"CvBridge Error: {e}")
             return
 
         array_msg = DetectedObjectArray()
         array_msg.header.stamp = self.get_clock().now().to_msg()
-        array_msg.header.frame_id = "camera_link"
+        array_msg.header.frame_id = msg.header.frame_id
 
         detections = self.detector.detect_objects(frame, threshold=0.5, imgsz=224)
         for detection in detections:
@@ -79,9 +92,7 @@ def main(args=None):
     except KeyboardInterrupt:
         print("\n[INFO] Closing signal received (Ctrl+C).")
     finally:
-        print("[INFO] Releasing the camera and closing the node.")
-        if hasattr(node, "camera") and node.camera is not None:
-            node.camera.release()
+        print("[INFO] closing the node.")
 
         node.destroy_node()
         if rclpy.ok():
