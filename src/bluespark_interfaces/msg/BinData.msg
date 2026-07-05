@@ -1,0 +1,11 @@
+std_msgs/Header header
+bool detected
+float32 offset_x
+float32 offset_y
+float32 area_fraction
+string symbol
+float32 symbol_confidence
+int32 bbox_x
+int32 bbox_y
+int32 bbox_w
+int32 bbox_h

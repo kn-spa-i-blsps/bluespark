@@ -14,6 +14,10 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/DetectedObjectArray.msg"
   "msg/PipelineData.msg"
   "srv/SetRCOverride.srv"
+  "msg/BinData.msg"
+  "msg/Detection.msg"
+  "msg/PathMarkerData.msg"
+  "msg/PipelineData.msg"
   DEPENDENCIES std_msgs
 )
 
