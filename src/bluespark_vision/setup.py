@@ -29,8 +29,8 @@ setup(
     entry_points={
         'console_scripts': [
             'vision_node = bluespark_vision.vision_node:main',
-            'pipeline_node = bluespark_vision.pipeline_node:main',
             'camera_node = bluespark_vision.camera_node:main',
+
         ],
     },
 )

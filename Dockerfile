@@ -31,6 +31,13 @@ RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/
 # Heavy requirements that do not change often.
 RUN pip3 install --upgrade pip && \
     pip3 install MAVProxy opencv-python ultralytics numpy
+
+RUN pip3 install \
+    lgpio \
+    adafruit-blinka \
+    adafruit-circuitpython-pca9685 \
+    adafruit-circuitpython-motor
+
 # Lighter or more susceptible to change requirements.
 COPY requirements.txt /tmp/requirements.txt
 RUN pip3 install -r /tmp/requirements.txt

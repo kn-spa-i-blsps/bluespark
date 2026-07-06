@@ -17,7 +17,7 @@ rosidl_generate_interfaces(${PROJECT_NAME}
   "msg/BinData.msg"
   "msg/Detection.msg"
   "msg/PathMarkerData.msg"
-  "msg/PipelineData.msg"
+  "msg/VisionTarget.msg"
   DEPENDENCIES std_msgs
 )
 
