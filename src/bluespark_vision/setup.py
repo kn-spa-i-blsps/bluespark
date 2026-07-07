@@ -30,9 +30,9 @@ setup(
         'console_scripts': [
             'vision_node = bluespark_vision.vision_node:main',
             'camera_node = bluespark_vision.camera_node:main',
-	    'pipeline_node = bluespark_vision.pipeline_node:main',
-	    'bin_detector_node = bluespark_vision.bin_detector_node:main',
-	    'path_marker_node = bluespark_vision.path_marker_node:main',
+	        'pipeline_node = bluespark_vision.pipeline_node:main',
+	        'bin_detector_node = bluespark_vision.bin_detector_node:main',
+	        'path_marker_node = bluespark_vision.path_marker_node:main',
 
         ],
     },
