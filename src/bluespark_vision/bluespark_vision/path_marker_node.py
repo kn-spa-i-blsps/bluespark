@@ -24,8 +24,8 @@ from rclpy.node import Node
 from sensor_msgs.msg import Image
 from std_msgs.msg import Header
 from bluespark_interfaces.msg import VisionTarget
-from bluespark_vision.image_utils import ros_image_to_cv2
-from bluespark_vision.detectors.path_marker import PathMarkerDetector
+from .image_utils import ros_image_to_cv2
+from .detectors.path_marker import PathMarkerDetector
 
 
 class PathMarkerNode(Node):
