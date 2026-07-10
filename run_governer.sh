@@ -1,9 +1,9 @@
 #!/bin/bash
 #
-# run_brain.sh — supervisor for the brain (main) Raspberry Pi.
+# run_governer.sh — supervisor for the brain (main) Raspberry Pi.
 #
 # Replaces the manual "start eight nodes" part of test03.sh with a single
-# `ros2 launch brain.launch.py`, while KEEPING the safety/lifecycle logic that
+# `ros2 launch governer.launch.py`, while KEEPING the safety/lifecycle logic that
 # launch does not provide:
 #   - distinguish a clean mission finish (rc=0) from a crash (rc!=0)
 #   - on clean finish: stop and exit (do not restart forever)
@@ -39,9 +39,9 @@ MIN_UPTIME=15          # seconds — shorter than this counts as a "fast crash"
 fast_crash_count=0
 
 start_stack() {
-    echo "-- Launching brain stack --"
+    echo "-- Launching governer stack --"
     # One launch brings up mavros + control + autonomy in order.
-    ros2 launch bluespark_bringup brain.launch.py &
+    ros2 launch bluespark_bringup governer.launch.py &
     LAUNCH_PID=$!
     echo "-- Launch started (PID $LAUNCH_PID) --"
 }
