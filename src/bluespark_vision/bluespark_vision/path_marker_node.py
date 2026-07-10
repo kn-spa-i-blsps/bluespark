@@ -4,19 +4,19 @@ Purpose: ROS 2 node that detects the path marker (an arrow-shaped marker on the
          seafloor) in the camera stream and publishes its position and pointing
          direction for the control layer.
 
-         Subscribes to raw frames on /camera/image_raw, runs the classic
+         Subscribes to raw frames on camera/image_raw, runs the classic
          HSV + contour detector (PathMarkerDetector), smooths the result over
          time with an exponential moving average (EMA), and publishes a
-         VisionTarget on /path_marker/data.
+         VisionTarget on path_marker/data.
 
          Like the other detectors, this node only reports what it sees; it does
          not command any motion, and it reads from the shared camera stream
          owned by camera_node.
 
 Publishes:
-    /path_marker/data   (bluespark_interfaces/VisionTarget)   source = "path_marker"
+    path_marker/data   (bluespark_interfaces/VisionTarget)   source = "path_marker"
 Subscribes:
-    /camera/image_raw   (sensor_msgs/Image)
+    camera/image_raw   (sensor_msgs/Image)
 """
 
 import rclpy
@@ -63,12 +63,12 @@ class PathMarkerNode(Node):
         self._ema_confidence = 0.0
         self._ema_tip_direction = 0.0
 
-        self.publisher = self.create_publisher(VisionTarget, '/path_marker/data', 10)
+        self.publisher = self.create_publisher(VisionTarget, 'path_marker/data', 10)
         self.subscription = self.create_subscription(
-            Image, '/camera/image_raw', self._image_callback, 10
+            Image, 'camera/image_raw', self._image_callback, 10
         )
 
-        self.get_logger().info('Path marker node ready, subscribing to /camera/image_raw')
+        self.get_logger().info('Path marker node ready, subscribing to camera/image_raw')
 
     def _image_callback(self, msg: Image):
         frame = ros_image_to_cv2(msg)

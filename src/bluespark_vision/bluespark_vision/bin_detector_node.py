@@ -4,20 +4,20 @@ Purpose: ROS 2 node that detects the bin (a colored container on the seafloor)
          and the symbol inside it (flame / drop) in the camera stream, and
          publishes its position and identified symbol for the control layer.
 
-         Subscribes to raw frames on /camera/image_raw, runs the classic
+         Subscribes to raw frames on camera/image_raw, runs the classic
          HSV / template detector (BinDetector), smooths the geometry over time
          with an exponential moving average (EMA), stabilizes the symbol with a
          majority vote over a sliding window, and publishes a VisionTarget on
-         /bin/data.
+         bin/data.
 
          Like the other detectors, this node only reports what it sees; it does
          not command any motion, and it reads from the shared camera stream
          owned by camera_node.
 
 Publishes:
-    /bin/data   (bluespark_interfaces/VisionTarget)   source = "bin"
+    bin/data   (bluespark_interfaces/VisionTarget)   source = "bin"
 Subscribes:
-    /camera/image_raw   (sensor_msgs/Image)
+    camera/image_raw   (sensor_msgs/Image)
 """
 
 import rclpy
@@ -115,14 +115,14 @@ class BinDetectorNode(Node):
         self._last_symbol = ''
         self._vote_history = []
 
-        self.publisher = self.create_publisher(VisionTarget, '/bin/data', 10)
+        self.publisher = self.create_publisher(VisionTarget, 'bin/data', 10)
         self.subscription = self.create_subscription(
-            Image, '/camera/image_raw', self._image_callback, 10
+            Image, 'camera/image_raw', self._image_callback, 10
         )
 
         self.get_logger().info(
             f'Bin detector node ready (method={method_str}), '
-            f'subscribing to /camera/image_raw'
+            f'subscribing to camera/image_raw'
         )
 
     def _image_callback(self, msg: Image):

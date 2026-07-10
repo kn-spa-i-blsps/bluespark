@@ -33,7 +33,7 @@ class VisionNode(Node):
         
         self.subscription = self.create_subscription(
             Image,
-            "/camera/image_raw",
+            "camera/image_raw",
             self.image_callback,
             qos_profile
         )

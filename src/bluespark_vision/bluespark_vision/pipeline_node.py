@@ -3,10 +3,10 @@ File: pipeline_node.py
 Purpose: ROS 2 node that detects the pipeline (a bright line on the seafloor)
          in the camera stream and publishes its position for the control layer.
 
-         Subscribes to raw frames on /camera/image_raw, runs the classic
+         Subscribes to raw frames on camera/image_raw, runs the classic
          HSV + Hough line detector (PipelineDetector), smooths the result over
          time with an exponential moving average (EMA), and publishes a
-         VisionTarget on /pipeline/data.
+         VisionTarget on pipeline/data.
 
          This node only reports what it sees (offset, angle, confidence); it
          does not command any motion. It is one of several detectors that read
@@ -14,9 +14,9 @@ Purpose: ROS 2 node that detects the pipeline (a bright line on the seafloor)
          not by this node.
 
 Publishes:
-    /pipeline/data   (bluespark_interfaces/VisionTarget)   source = "pipeline"
+    pipeline/data   (bluespark_interfaces/VisionTarget)   source = "pipeline"
 Subscribes:
-    /camera/image_raw   (sensor_msgs/Image)
+    camera/image_raw   (sensor_msgs/Image)
 """
 
 import rclpy
@@ -64,12 +64,12 @@ class PipelineNode(Node):
         self._ema_angle_deg = 0.0
         self._ema_confidence = 0.0
 
-        self.publisher = self.create_publisher(VisionTarget, '/pipeline/data', 10)
+        self.publisher = self.create_publisher(VisionTarget, 'pipeline/data', 10)
         self.subscription = self.create_subscription(
-            Image, '/camera/image_raw', self._image_callback, 10
+            Image, 'camera/image_raw', self._image_callback, 10
         )
 
-        self.get_logger().info('Pipeline node ready, subscribing to /camera/image_raw')
+        self.get_logger().info('Pipeline node ready, subscribing to camera/image_raw')
 
     def _image_callback(self, msg: Image):
         frame = ros_image_to_cv2(msg)
