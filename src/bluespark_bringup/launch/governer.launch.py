@@ -1,5 +1,5 @@
 """
-brain.launch.py — main / "brain" Raspberry Pi.
+governer.launch.py — main / "governer" Raspberry Pi.
 
 This Pi has NO camera. It runs the flight-control stack and the behaviour tree:
 
@@ -19,7 +19,7 @@ SCOPE — this launch only STARTS the stack in order. It does NOT handle:
   - restart on crash
   - clean-exit vs crash distinction
   - disarm-on-exit safety
-Those stay in the supervising bash script (run_brain.sh), which calls this
+Those stay in the supervising bash script (run_governer.sh), which calls this
 launch as a single process and watches it. Keeping the safety/lifecycle logic
 in bash (where it is explicit) rather than in launch event handlers is a
 deliberate choice.

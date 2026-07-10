@@ -3,14 +3,14 @@
 #
 # The SAME image on every Pi; the ROLE is chosen by WHICH_RPI (from .env):
 #     front | down | side  -> camera role: runs `ros2 launch <role>.launch.py`
-#     brain                -> control+autonomy role: runs run_governer.sh, the
+#     governer                -> control+autonomy role: runs run_governer.sh, the
 #                             supervisor that owns build + launch + restart/disarm
 #
 # Naming note:
-#   - "brain" is the ROLE / namespace of the main Pi (brain.launch.py).
-#   - run_governer.sh is the SUPERVISOR SCRIPT that the brain role runs; it is
-#     the one thing that calls brain.launch.py and adds crash-restart + disarm.
-#   So: role = brain, supervisor = governer. They are not the same thing.
+#   - "governer" is the ROLE / namespace of the main Pi (governer.launch.py).
+#   - run_governer.sh is the SUPERVISOR SCRIPT that the governer role runs; it is
+#     the one thing that calls governer.launch.py and adds crash-restart + disarm.
+#   So: role = governer, supervisor = governer. They are not the same thing.
 #
 # Set the role per Pi in a local .env file (NOT committed; see .gitignore):
 #     echo "WHICH_RPI=down" > .env
@@ -40,10 +40,10 @@ services:
     environment:
       - ROS_DOMAIN_ID=42        # MUST be identical on all four Pis.
       - ROS_LOCALHOST_ONLY=0
-      - WHICH_RPI=${WHICH_RPI:?set WHICH_RPI in .env (front|down|side|brain)}
+      - WHICH_RPI=${WHICH_RPI:?set WHICH_RPI in .env (front|down|side|governer)}
 
     # Role dispatch:
-    #   brain -> hand off to run_governer.sh (it builds, launches brain.launch.py,
+    #   governer -> hand off to run_governer.sh (it builds, launches governer.launch.py,
     #            and supervises: restart on crash, disarm on exit).
     #   else  -> build once, then ros2 launch <role>.launch.py directly.
     #
@@ -52,7 +52,7 @@ services:
     command: >
       bash -c '
         source /opt/ros/humble/setup.bash &&
-        if [ "$WHICH_RPI" = "brain" ]; then
+        if [ "$WHICH_RPI" = "governer" ]; then
           exec bash /workspace/run_governer.sh ;
         else
           colcon build --symlink-install --parallel-workers 2 &&
