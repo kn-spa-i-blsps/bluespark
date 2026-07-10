@@ -30,6 +30,7 @@ RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/
 
 # Heavy requirements that do not change often.
 RUN pip3 install --upgrade pip && \
+    pip3 install torch torchvision --index-url https://download.pytorch.org/whl/cpu && \
     pip3 install MAVProxy opencv-python ultralytics numpy
 
 RUN pip3 install \
