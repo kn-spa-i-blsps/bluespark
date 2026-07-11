@@ -55,6 +55,7 @@ services:
         if [ "$WHICH_RPI" = "governer" ]; then
           exec bash /workspace/run_governer.sh ;
         else
+          pip3 install "setuptools==65.7.0" &&
           colcon build --symlink-install --parallel-workers 2 &&
           source /workspace/install/setup.bash &&
           exec ros2 launch bluespark_bringup ${WHICH_RPI}.launch.py ;
