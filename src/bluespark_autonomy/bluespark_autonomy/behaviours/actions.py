@@ -1,4 +1,5 @@
 import py_trees
+import time
 from math import hypot
 from bluespark_interfaces.srv import SetRCOverride
 from bluespark_autonomy.pid.axis_controller import AxisController
@@ -31,7 +32,8 @@ class BaseRCBehaviour(py_trees.behaviour.Behaviour):
 
 
 class ApproachGate(BaseRCBehaviour):
-    def __init__(self, name: str):
+    def __init__(self, name: str, target_distance: float = 1.0,
+                 pass_through_duration: float = 7.5, pass_through_pwm: int = 1650):
         # Rejestrujemy tylko te 3 osie, których fizycznie tu używamy
         super().__init__(name=name, active_axes=["yaw", "heave", "surge"])
 
@@ -41,13 +43,24 @@ class ApproachGate(BaseRCBehaviour):
         self.STATE_SEARCHING = "SEARCHING"
         self.STATE_CENTERING = "CENTERING"
         self.STATE_APPROACHING = "APPROACHING"
+        self.STATE_PASSING_THROUGH = "PASSING_THROUGH"
 
         self.current_state = self.STATE_SEARCHING
+
+        # x - odległość od bramki, po której zaczynamy przez nią przepływać
+        self.TARGET_DISTANCE = target_distance
+        # t - jak długo płyniemy do przodu żeby przepłynąć przez bramkę
+        self.PASS_THROUGH_DURATION = pass_through_duration
+        self.PASS_THROUGH_PWM = pass_through_pwm
+        self.pass_through_start_time = None
 
     def initialise(self):
         pass
 
     def update(self):
+        if self.current_state == self.STATE_PASSING_THROUGH:
+            return self._pass_through()
+
         detected_objects = self.vision_bb.detected_objects if self.vision_bb.exists("detected_objects") else {}
 
         if not detected_objects:
@@ -64,14 +77,11 @@ class ApproachGate(BaseRCBehaviour):
             self._stop_and_search()
             return py_trees.common.Status.RUNNING
 
-        TARGET_DISTANCE = 1.0
         DEADBAND_ANGLE = 10.0
 
         error_yaw = target.cam_h_angle_deg
         error_heave = target.cam_v_angle_deg
-        error_dist = hypot(target.pos_x, target.pos_y, target.pos_z) - TARGET_DISTANCE
-
-        # TODO: return success if target distance is achieved
+        error_dist = hypot(target.pos_x, target.pos_y, target.pos_z) - self.TARGET_DISTANCE
 
         is_centered = (abs(error_yaw) < DEADBAND_ANGLE) and (abs(error_heave) < DEADBAND_ANGLE)
 
@@ -92,6 +102,10 @@ class ApproachGate(BaseRCBehaviour):
         elif self.current_state == self.STATE_APPROACHING:
             self._send_single_pwm("yaw", self.axis_controller.STOP_PWM)
             self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
+
+            if error_dist <= 0:
+                return self._start_pass_through()
+
             self._send_single_pwm("surge", self.axis_controller.update("surge", error_dist))
 
         return py_trees.common.Status.RUNNING
@@ -106,8 +120,21 @@ class ApproachGate(BaseRCBehaviour):
         self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
         self._send_single_pwm("yaw", 1550)
 
+    def _start_pass_through(self):
+        self.current_state = self.STATE_PASSING_THROUGH
+        self.pass_through_start_time = time.time()
+        return self._pass_through()
 
-class DepthControl(BaseRCBehaviour):
+    def _pass_through(self):
+        if time.time() - self.pass_through_start_time >= self.PASS_THROUGH_DURATION:
+            self._send_single_pwm("surge", self.axis_controller.STOP_PWM)
+            return py_trees.common.Status.SUCCESS
+
+        self._send_single_pwm("surge", self.PASS_THROUGH_PWM)
+        return py_trees.common.Status.RUNNING
+
+
+class AdjustDepth(BaseRCBehaviour):
     def __init__(self, name, target_depth):
         super().__init__(name=name, active_axes=["heave"])
 
@@ -137,3 +164,27 @@ class DepthControl(BaseRCBehaviour):
     def terminate(self, new_status):
         super().terminate(new_status)
         self.axis_controller.reset_all()
+
+
+class OrbitObject(BaseRCBehaviour):
+    def __init__(self, name):
+        super().__init__(name=name, active_axes=["yaw", "surge", "sway"])
+
+
+    def initialise(self):
+        pass
+
+
+    def update(self):
+        pass
+
+
+    def terminate(self):
+        pass
+
+
+class RotateObject(BaseRCBehaviour):
+    def __init__(self, name, axis):
+        super().__init__(name=name, active_axes=["yaw"])
+        self.goal_axis = axis
+        self.starting_axis = self.attach_blackboard_client(name=self.name)
