@@ -31,7 +31,7 @@ class BlackboardManager:
         self.vision_bb.detected_objects = {}
         self.vision_sub = self.node.create_subscription(
             DetectedObjectArray,
-            '/vision/detected_objects',
+            '/front/detected_objects',
             self._vision_callback,
             10
         )
@@ -107,7 +107,7 @@ class BlackboardManager:
 
     def _vision_callback(self, msg):
         detected_dict = {obj.name: obj for obj in msg.objects}
-        self.vision_bb.set("vision/detected_objects", detected_dict)
+        self.vision_bb.set("front/detected_objects", detected_dict)
 
     def _mavros_callback(self, msg):
         self.state_bb.set("is_armed", msg.armed)

@@ -27,6 +27,7 @@ setup(
         'console_scripts': [
             'autonomy_node = bluespark_autonomy.autonomy_node:main',
             'approacherTest = bluespark_autonomy.missions.approacherTest:main',
+            'benchTest = bluespark_autonomy.missions.benchTest:main',
         ],
     },
 )
