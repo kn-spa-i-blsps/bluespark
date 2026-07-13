@@ -1,0 +1,62 @@
+# =============================================================================
+# docker-compose.dev.yml  —  DEV / BENCH TESTING (governer Pi)
+#
+# Brings up the FULL flight-control stack (mavros + rc_override + vehicle_manager)
+# but NO mission — so you can run bench tests by hand without hand-starting
+# mavros every time.
+#
+# It uses governer.launch.py with run_autonomy:=false, which starts the stack in
+# the correct staggered order (mavros t=0, rc_override t=3, vehicle_manager t=5)
+# and then just holds — no autonomy_node, no supervisor, no auto-mission.
+#
+# WORKFLOW:
+#   docker compose -f docker-compose.dev.yml up -d      # stack comes up in background
+#   docker compose -f docker-compose.dev.yml logs -f    # (optional) watch it start
+#   docker exec -it bluespark_dev bash                  # jump in
+#     source /opt/ros/humble/setup.bash
+#     source install/setup.bash
+#     ros2 run bluespark_autonomy benchTest --ros-args -p mission:=wiggle
+#
+#   # need a second terminal (e.g. emergency disarm)? same container, any time:
+#   docker exec -it bluespark_dev bash
+#     ros2 service call /manager/set_arming std_srvs/srv/SetBool "{data: false}"
+#
+#   docker compose -f docker-compose.dev.yml down        # tear it all down
+#
+# Stable name (bluespark_dev) + up -d means you can open as many exec shells as
+# you want, in any order, and closing one does NOT kill the stack (unlike the
+# `run --rm` approach).
+# =============================================================================
+
+services:
+  bluespark_dev:
+    build: .
+    container_name: bluespark_dev
+
+    # Host network + privileged: cross-Pi ROS 2 discovery + hardware (serial/I2C).
+    network_mode: host
+    privileged: true
+
+    volumes:
+      - .:/workspace          # live-mounted code; git pull + restart, no rebuild
+      - /dev:/dev             # serial (Pixhawk), I2C, etc.
+
+    environment:
+      - ROS_DOMAIN_ID=42      # MUST match every other Pi
+      - ROS_LOCALHOST_ONLY=0
+
+    # Build (offline-safe) then bring up ONLY the stack, no mission.
+    #   - NO `pip install` here: everything the stack needs is already in the
+    #     image (see Dockerfile). This is what makes it work with no internet.
+    #   - run_autonomy:=false -> mavros + control only, autonomy_node skipped.
+    command: >
+      bash -c '
+        source /opt/ros/humble/setup.bash &&
+        colcon build --symlink-install --parallel-workers 2 &&
+        source /workspace/install/setup.bash &&
+        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false
+      '
+
+    # Dev: do NOT auto-restart. If the stack dies you want to see why, not have
+    # it silently loop.
+    restart: "no"

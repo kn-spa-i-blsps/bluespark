@@ -1,28 +1,32 @@
 """
 governer.launch.py — main / "governer" Raspberry Pi.
 
-This Pi has NO camera. It runs the flight-control stack and the behaviour tree:
+This Pi has NO camera. It runs the flight-control stack and (optionally) the
+behaviour tree:
 
   mavros            -> talks to the Pixhawk (serial)
   rc_override_node  -> sends PWM to the thrusters (control/set_* services)
   vehicle_manager   -> arming + mode services (/manager/set_arming, /manager/set_mode)
-  autonomy (py_trees) -> the mission behaviour tree
+  autonomy (py_trees) -> the mission behaviour tree   [only if run_autonomy:=true]
 
 Startup ORDER matters (each depends on the previous), so nodes are staggered
 with TimerAction delays that mirror the sleeps in the old test03.sh:
   mavros            at t=0
   rc_override       at t=3   (after mavros link)
   vehicle_manager   at t=5
-  autonomy          at t=12  (after MAVROS is connected)
+  autonomy          at t=12  (after MAVROS is connected)   [optional]
 
-SCOPE — this launch only STARTS the stack in order. It does NOT handle:
-  - restart on crash
-  - clean-exit vs crash distinction
-  - disarm-on-exit safety
-Those stay in the supervising bash script (run_governer.sh), which calls this
-launch as a single process and watches it. Keeping the safety/lifecycle logic
-in bash (where it is explicit) rather than in launch event handlers is a
-deliberate choice.
+DEV vs PROD:
+  * PROD (run_governer.sh): launches with defaults -> autonomy runs.
+  * DEV / bench testing: launch with run_autonomy:=false to bring up ONLY the
+    stack (mavros + control), then run your mission by hand:
+        ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false
+        # then, in another shell in the same container:
+        ros2 run bluespark_autonomy benchTest --ros-args -p mission:=wiggle
+    This is what docker-compose.dev.yml uses so you never hand-start mavros.
+
+SCOPE — this launch only STARTS the stack in order. It does NOT handle restart
+on crash, clean-exit vs crash, or disarm-on-exit. Those stay in run_governer.sh.
 
 Arming / mode setting is intentionally NOT done here — the mission (py_trees)
 or the supervising script decides when to arm, so the vehicle is never armed
@@ -31,6 +35,7 @@ merely because the stack came up.
 
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, TimerAction, IncludeLaunchDescription
+from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
@@ -46,12 +51,17 @@ def generate_launch_description():
     autonomy_exe_arg = DeclareLaunchArgument(
         'autonomy_executable', default_value='approacherTest',
         description='Which py_trees entry point to run from bluespark_autonomy.')
+    run_autonomy_arg = DeclareLaunchArgument(
+        'run_autonomy', default_value='true',
+        description='If false, bring up only the stack (mavros + control) and '
+                    'do NOT start any mission. Use for bench testing, then run '
+                    'the mission by hand with ros2 run.')
 
     fcu_url = LaunchConfiguration('fcu_url')
     autonomy_executable = LaunchConfiguration('autonomy_executable')
+    run_autonomy = LaunchConfiguration('run_autonomy')
 
     # --- mavros (t=0) ---
-    # Included from the mavros package's apm.launch, same as test03.sh.
     mavros = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare('mavros'), 'launch', 'apm.launch'])
@@ -81,7 +91,7 @@ def generate_launch_description():
         )],
     )
 
-    # --- autonomy / py_trees (t=12), after MAVROS is connected ---
+    # --- autonomy / py_trees (t=12) --- only when run_autonomy is true.
     autonomy = TimerAction(
         period=12.0,
         actions=[Node(
@@ -89,12 +99,14 @@ def generate_launch_description():
             executable=autonomy_executable,
             name='autonomy_node',
             output='screen',
+            condition=IfCondition(run_autonomy),
         )],
     )
 
     return LaunchDescription([
         fcu_url_arg,
         autonomy_exe_arg,
+        run_autonomy_arg,
         mavros,
         rc_override,
         vehicle_manager,
