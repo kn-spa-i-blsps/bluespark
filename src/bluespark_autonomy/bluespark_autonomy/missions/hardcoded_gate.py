@@ -40,10 +40,10 @@ from bluespark_autonomy.blackboard_manager import BlackboardManager
 
 
 # ---- Parametry misji (delikatne wartosci; zmien tutaj) -----------------------
-DIVE_PWM = 1450        # heave < 1500 = w dol; 1450 = lagodne nurkowanie
+DIVE_PWM = 1750        # heave < 1500 = w dol; 1450 = lagodne nurkowanie
 DIVE_DURATION = 1.0    # sekundy
-
-SURGE_PWM = 1560       # surge > 1500 = do przodu; 1560 = powolny przelot
+DIVE_CONST = 1710
+SURGE_PWM = 1600       # surge > 1500 = do przodu; 1560 = powolny przelot
 SURGE_DURATION = 10.0  # sekundy
 
 
@@ -52,7 +52,7 @@ def create_mission_tree():
     mission = Sequence(name="BlueSpark Hardcoded Gate", memory=True)
 
     # Pre-flight
-    mission.add_child(SetFlightMode(name="Set ALT_HOLD Mode", mode="ALT_HOLD"))
+    mission.add_child(SetFlightMode(name="Set MANUAL Mode", mode="MANUAL"))
     mission.add_child(ArmRobot(name="Arm Thrusters", arm=True))
 
     # Delikatne zanurzenie
@@ -61,7 +61,7 @@ def create_mission_tree():
 
     # Powolny przelot przez bramke
     mission.add_child(MoveRC(
-        name="Forward Through Gate", duration_sec=SURGE_DURATION, surge=SURGE_PWM))
+        name="Forward Through Gate", duration_sec=SURGE_DURATION, surge=SURGE_PWM, heave=DIVE_CONST))
 
     # Safing
     mission.add_child(ArmRobot(name="Disarm and STOP", arm=False))
