@@ -49,7 +49,7 @@ def generate_launch_description():
         'fcu_url', default_value='serial:///dev/ttyACM0:115200',
         description='MAVLink connection to the flight controller (Pixhawk).')
     autonomy_exe_arg = DeclareLaunchArgument(
-        'autonomy_executable', default_value='approacherTest',
+        'autonomy_executable', default_value='hardcoded_gate',
         description='Which py_trees entry point to run from bluespark_autonomy.')
     run_autonomy_arg = DeclareLaunchArgument(
         'run_autonomy', default_value='true',

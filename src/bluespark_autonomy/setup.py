@@ -28,6 +28,7 @@ setup(
             'autonomy_node = bluespark_autonomy.autonomy_node:main',
             'approacherTest = bluespark_autonomy.missions.approacherTest:main',
             'benchTest = bluespark_autonomy.missions.benchTest:main',
+            'hardcoded_gate = bluespark_autonomy.missions.hardcoded_gate:main',
         ],
     },
 )
