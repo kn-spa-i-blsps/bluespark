@@ -74,21 +74,21 @@ class BlackboardManager:
         )
 
 
-        ###OrbitingBlackboard (azimuth)
-        self.orbiting_bb = py_trees.blackboard.Client(name="OrbitingManager", namespace="orbiting")
-        self.orbiting_bb.azimuth = 0 #TODO: verify if its neccessary
-        self.orbiting_bb.register_key(
-            key="azimuth",
-            access=py_trees.common.Access.WRITE
-        )
-        self.orbiting_bb.azimuth = 0 #TODO: verify if its neccessary
-        self.orbiting_bb.set("azimuth", 0) #TODO: verify if this doesnt cause any errors
-        self.current_azimuth = self.node.create_subsctription(
-            VfrHud,
-            '/mavros/vfr_hud',
-            self._orientation_callback,
-            10
-        )
+        # ###OrbitingBlackboard (azimuth)
+        # self.orbiting_bb = py_trees.blackboard.Client(name="OrbitingManager", namespace="orbiting")
+        # self.orbiting_bb.azimuth = 0 #TODO: verify if its neccessary
+        # self.orbiting_bb.register_key(
+        #     key="azimuth",
+        #     access=py_trees.common.Access.WRITE
+        # )
+        # self.orbiting_bb.azimuth = 0 #TODO: verify if its neccessary
+        # self.orbiting_bb.set("azimuth", 0) #TODO: verify if this doesnt cause any errors
+        # self.current_azimuth = self.node.create_subsctription(
+        #     VfrHud,
+        #     '/mavros/vfr_hud',
+        #     self._orientation_callback,
+        #     10
+        # )
 
         ### ControlBlackboard
         self.control_bb = py_trees.blackboard.Client(name="ControlManager", namespace="control")
@@ -131,5 +131,5 @@ class BlackboardManager:
         self.state_bb.set("flight_mode", msg.mode)
 
 
-    def _orientation_callback(self, msg):
-        self.orbiting_bb.azimuth = msg.heading
+    # def _orientation_callback(self, msg):
+    #     self.orbiting_bb.azimuth = msg.heading

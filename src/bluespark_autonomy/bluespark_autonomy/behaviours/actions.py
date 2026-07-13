@@ -166,25 +166,25 @@ class AdjustDepth(BaseRCBehaviour):
         self.axis_controller.reset_all()
 
 
-class OrbitObject(BaseRCBehaviour):
-    def __init__(self, name):
-        super().__init__(name=name, active_axes=["yaw", "surge", "sway"])
+# class OrbitObject(BaseRCBehaviour):
+#     def __init__(self, name):
+#         super().__init__(name=name, active_axes=["yaw", "surge", "sway"])
+#
+#
+#     def initialise(self):
+#         pass
+#
+#
+#     def update(self):
+#         pass
+#
+#
+#     def terminate(self):
+#         pass
+#
 
-
-    def initialise(self):
-        pass
-
-
-    def update(self):
-        pass
-
-
-    def terminate(self):
-        pass
-
-
-class RotateObject(BaseRCBehaviour):
-    def __init__(self, name, axis):
-        super().__init__(name=name, active_axes=["yaw"])
-        self.goal_axis = axis
-        self.starting_axis = self.attach_blackboard_client(name=self.name)
+# class RotateObject(BaseRCBehaviour):
+#     def __init__(self, name, axis):
+#         super().__init__(name=name, active_axes=["yaw"])
+#         self.goal_axis = axis
+#         self.starting_axis = self.attach_blackboard_client(name=self.name)
