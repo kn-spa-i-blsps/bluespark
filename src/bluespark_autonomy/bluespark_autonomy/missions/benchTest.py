@@ -1,4 +1,4 @@
-\"""
+"""
 File: benchTest.py
 Purpose:
     Bench-test entry point for single open-loop moves, based directly on the
