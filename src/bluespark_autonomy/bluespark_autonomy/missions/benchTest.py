@@ -66,11 +66,8 @@ def create_mission_tree(mission, pwm, duration):
 def main(args=None):
     rclpy.init(args=args)
 
-    # Build the tree exactly like hardcoded_mission.py; the manager creates the
-    # node under the hood. We read params off that same node.
-    root_behavior = create_mission_tree("wiggle", 1600, 2.0)  # placeholder, rebuilt below
-    tree_manager = py_trees_ros.trees.BehaviourTree(root=root_behavior)
-    node = tree_manager.node
+    # Create our own node FIRST (tree_manager.node is None until setup()).
+    node = rclpy.create_node("bench_test_node")
 
     node.declare_parameter("mission", "wiggle")
     node.declare_parameter("pwm", 1600)
@@ -79,11 +76,11 @@ def main(args=None):
     pwm = max(1100, min(int(node.get_parameter("pwm").get_parameter_value().integer_value), 1900))
     duration = float(node.get_parameter("duration").get_parameter_value().double_value)
 
-    # Rebuild the root with the real params, then re-point the manager at it.
     root_behavior = create_mission_tree(mission, pwm, duration)
-    tree_manager.root = root_behavior
+    tree_manager = py_trees_ros.trees.BehaviourTree(root=root_behavior)
 
     try:
+        # Pass our node in, exactly like approacherTest.py does.
         tree_manager.setup(node=node, timeout=15.0)
     except Exception as e:
         node.get_logger().error(f"Critical setup error: {e}")
