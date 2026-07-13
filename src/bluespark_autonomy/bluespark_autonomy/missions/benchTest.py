@@ -62,6 +62,8 @@ NOTES:
     pid.py. Nothing persists past this process.
 """
 
+import signal
+
 import rclpy
 import py_trees
 import py_trees_ros.trees
@@ -70,7 +72,7 @@ from py_trees.decorators import Timeout, FailureIsSuccess
 
 from bluespark_autonomy.behaviours.hardcoded_actions import MoveRC
 from bluespark_autonomy.behaviours.control import SetFlightMode, ArmRobot
-from bluespark_autonomy.behaviours.actions import ApproachGate, DepthControl
+from bluespark_autonomy.behaviours.actions import ApproachGate, AdjustDepth
 from bluespark_autonomy.blackboard_manager import BlackboardManager
 
 
@@ -127,7 +129,7 @@ def _apply_p_only(depth_ctrl):
 
 
 def body_depth(target_depth, timeout_sec, pid_mode):
-    depth_ctrl = DepthControl(name=f"Hold depth {target_depth}m", target_depth=target_depth)
+    depth_ctrl = AdjustDepth(name=f"Hold depth {target_depth}m", target_depth=target_depth)
     if pid_mode == "p_only":
         _apply_p_only(depth_ctrl)
     # Timeout so the mission always ends even if the deadband is never hit
@@ -226,14 +228,41 @@ def main(args=None):
     print(py_trees.display.unicode_tree(root=root))
     print("=" * 46 + "\n")
 
-    node.get_logger().info("[benchTest] Ready — ticking at 10 Hz.")
+    node.get_logger().info("[benchTest] Ready — running mission ONCE, then disarm+exit.")
+
+    # Turn SIGTERM into the same KeyboardInterrupt path as Ctrl+C, so `docker
+    # stop`, `kill`, etc. also unwind cleanly through finally (-> STOP/disarm).
+    def _sigterm(_signum, _frame):
+        raise KeyboardInterrupt()
+    signal.signal(signal.SIGTERM, _sigterm)
+
+    # Tick the tree OURSELVES instead of tick_tock(). tick_tock loops forever and
+    # would re-run the whole mission (arm/move/disarm) again and again. Here we
+    # stop as soon as the root reaches SUCCESS or FAILURE — i.e. after ONE run.
+    period_s = 0.1
     try:
-        tree.tick_tock(period_ms=100)
-        rclpy.spin(node)
+        while rclpy.ok():
+            tree.tick()
+            # spin briefly so the node's subscriptions/service responses (arming,
+            # blackboard, RC replies) are actually processed between ticks.
+            rclpy.spin_once(node, timeout_sec=period_s)
+
+            status = tree.root.status
+            if status in (py_trees.common.Status.SUCCESS,
+                          py_trees.common.Status.FAILURE):
+                node.get_logger().info(
+                    f"[benchTest] Mission finished with {status.name}. Exiting.")
+                break
     except KeyboardInterrupt:
-        node.get_logger().info("[benchTest] Interrupt — shutting down; STOP sent on exit.")
+        node.get_logger().info("[benchTest] Interrupt — unwinding; STOP sent on exit.")
     finally:
-        tree.shutdown()
+        # tree.shutdown() calls terminate() on every behaviour: MoveRC sends STOP
+        # (1500) on the axes it touched, ArmRobot(disarm) disarms. This runs on
+        # BOTH the normal finish and Ctrl+C/SIGTERM paths.
+        try:
+            tree.shutdown()
+        except Exception as e:
+            node.get_logger().error(f"[benchTest] shutdown error: {e}")
         try:
             rclpy.shutdown()
         except Exception:
