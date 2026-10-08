@@ -1,9 +1,12 @@
 FROM ros:jazzy-ros-base
-ENV DEBIAN_FRONTEND=noninteractive
 
-# System dependencies & ROS 2 Jazzy packages
-RUN apt-get update && apt-get install -y \
+ENV DEBIAN_FRONTEND=noninteractive
+ENV PIP_BREAK_SYSTEM_PACKAGES=1
+
+RUN apt-get update && apt-get install -y --no-install-recommends \
     python3-pip \
+    python3-dev \
+    python3-numpy \
     libgl1 \
     libglx-mesa0 \
     python3-colcon-common-extensions \
@@ -13,40 +16,38 @@ RUN apt-get update && apt-get install -y \
     curl \
     libcap-dev \
     geographiclib-tools \
-    libgeographic-dev \
+    libgeographiclib-dev \
     ros-jazzy-mavros \
     ros-jazzy-mavros-msgs \
     ros-jazzy-mavros-extras \
     ros-jazzy-py-trees \
     ros-jazzy-py-trees-ros \
+    python3-opencv \
     ros-jazzy-vision-opencv \
     ros-jazzy-cv-bridge \
-    ros-jazzy-image-transport \
     && rm -rf /var/lib/apt/lists/*
 
-# Install GeographicLib datasets required by MAVROS
 RUN wget https://raw.githubusercontent.com/mavlink/mavros/master/mavros/scripts/install_geographiclib_datasets.sh \
     && chmod +x install_geographiclib_datasets.sh \
     && ./install_geographiclib_datasets.sh \
     && rm install_geographiclib_datasets.sh
 
-# Core Python & Vision ML dependencies (PEP 668 override for 24.04)
-RUN pip3 install --no-cache-dir --upgrade pip --break-system-packages && \
-    pip3 install --no-cache-dir --break-system-packages \
-    MAVProxy \
-    opencv-python \
+RUN pip3 install --no-cache-dir \
+    pymavlink \
+    pyserial \
+    defusedxml \
+    pynmeagps && \
+    pip3 install --no-cache-dir --no-deps MAVProxy && \
+    pip3 install --no-cache-dir \
+    "numpy<2" \
     ultralytics \
-    numpy
-
-# Hardware interfaces (for deployment on physical Pi)
-RUN pip3 install --no-cache-dir --break-system-packages \
     lgpio \
     adafruit-blinka \
     adafruit-circuitpython-pca9685 \
     adafruit-circuitpython-motor
 
 COPY requirements.txt /tmp/requirements.txt
-RUN if [ -s /tmp/requirements.txt ]; then pip3 install --no-cache-dir --break-system-packages -r /tmp/requirements.txt; fi
+RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 WORKDIR /workspace
 
