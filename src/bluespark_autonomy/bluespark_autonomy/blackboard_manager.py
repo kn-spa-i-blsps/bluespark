@@ -4,6 +4,11 @@ from mavros_msgs.msg import State, OverrideRCIn, VfrHud
 from sensor_msgs.msg import FluidPressure
 
 # TODO: Import the specific message type for depth data when available in bluespark_navigation
+# 
+# TODO: Find all the data we can get from our sensors and add them to our blackboard manager
+# 
+# THINGS TO ADD:
+# - Azimuths for all dofs 
 class BlackboardManager:
     """
     Purpose:
@@ -71,24 +76,7 @@ class BlackboardManager:
             'mavros/imu/static_pressure',
             self._depth_callback,
             10
-        )
-
-
-        # ###OrbitingBlackboard (azimuth)
-        # self.orbiting_bb = py_trees.blackboard.Client(name="OrbitingManager", namespace="orbiting")
-        # self.orbiting_bb.azimuth = 0 #TODO: verify if its neccessary
-        # self.orbiting_bb.register_key(
-        #     key="azimuth",
-        #     access=py_trees.common.Access.WRITE
-        # )
-        # self.orbiting_bb.azimuth = 0 #TODO: verify if its neccessary
-        # self.orbiting_bb.set("azimuth", 0) #TODO: verify if this doesnt cause any errors
-        # self.current_azimuth = self.node.create_subsctription(
-        #     VfrHud,
-        #     '/mavros/vfr_hud',
-        #     self._orientation_callback,
-        #     10
-        # )
+        ) 
 
         ### ControlBlackboard
         self.control_bb = py_trees.blackboard.Client(name="ControlManager", namespace="control")
@@ -123,13 +111,9 @@ class BlackboardManager:
         )
 
     def _vision_callback(self, msg):
-        detected_dict = {obj.name: obj for obj in msg.objects}
-        self.vision_bb.set("front/detected_objects", detected_dict)
+        detected_dict = {obj.label: obj for obj in msg.objects}
+        self.vision_bb.set("detected_objects", detected_dict)
 
     def _mavros_callback(self, msg):
         self.state_bb.set("is_armed", msg.armed)
         self.state_bb.set("flight_mode", msg.mode)
-
-
-    # def _orientation_callback(self, msg):
-    #     self.orbiting_bb.azimuth = msg.heading

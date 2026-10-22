@@ -1,8 +1,8 @@
 """
 File: autonomy_node.py
-Purpose: The main Executive Node for the autonomy layer.
-         Assembles the mission architecture using a Behavior Tree
-         and runs the decision loop at 10 Hz.
+Purpose: Simple testing a Approaching gate with minimal beahiour tree for it to work
+Note: Mostly for simple testing purposes, it can be transformed to a wraper for testing 
+    movement actions
 """
 
 import rclpy
@@ -40,26 +40,20 @@ def create_mission_tree():
 def main(args=None):
     rclpy.init(args=args)
 
-    # 1. Ręczne utworzenie węzła wykonawczego - od razu rozwiązuje problem z NoneType
-    node = rclpy.create_node('approacher_test_node')
-
-    # 2. Przekazujemy w 100% gotowy węzeł do Blackboard Managera
+    # Preparing for building and executing a pytree
+    node = rclpy.create_node('approacher_test_node') 
     bb_manager = BlackboardManager(node=node)
-
-    # 3. Budujemy logikę drzewa
+    # Building behaviour tree
     root_behavior = create_mission_tree()
     tree_manager = py_trees_ros.trees.BehaviourTree(root=root_behavior)
 
-    # 4. Inicjalizacja drzewa (przekazujemy nasz stworzony węzeł)
     try:
-        # Dzięki temu setup() nie musi tworzyć węzła pod maską, tylko używa naszego
         tree_manager.setup(node=node, timeout=15.0)
     except Exception as e:
         node.get_logger().error(f"Critical setup error: {e}")
         rclpy.shutdown()
         return
 
-    # Opcjonalne: Wyświetlenie drzewa w konsoli dla pewności
     print("\n" + "=" * 40)
     print("BLUE SPARK APPROACH GATE TEST:")
     print(py_trees.display.unicode_tree(root=root_behavior))
@@ -68,7 +62,6 @@ def main(args=None):
     node.get_logger().info('Autonomy test ready! Starting execution...')
 
     try:
-        # Odpalamy timer dla drzewa (10 Hz) i kręcimy węzłem, żeby odbierał wiadomości z wizji
         tree_manager.tick_tock(period_ms=100)
         rclpy.spin(node)
     except KeyboardInterrupt:

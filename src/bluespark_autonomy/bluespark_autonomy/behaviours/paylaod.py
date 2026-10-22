@@ -1,3 +1,12 @@
+'''
+File: payload.py
+Pytrees wrapper for using payloads like:
+    DROP_BALL_1 = 0
+    DROP_BALL_2 = 1
+    FIRE_TORPEDO = 2
+    RESET = 99
+IMPORTANT NOTE: Payloads were never tested in real life scenarios and might not work
+'''
 import py_trees
 import time
 from std_msgs.msg import Int32

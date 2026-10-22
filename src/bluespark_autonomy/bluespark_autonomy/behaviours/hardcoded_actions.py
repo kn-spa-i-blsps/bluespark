@@ -1,9 +1,6 @@
 """
 File: hardcoded_actions.py
-Purpose: Contains behavior tree action nodes for open-loop (dead reckoning)
-         control and system state management via ROS 2 services.
-         These behaviors are entirely independent of the visual perception system
-         and are used for hardware validation and blind navigation.
+Purpose: Simple behavior mostly for developmnet and testing whether.
 """
 
 import py_trees

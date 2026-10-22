@@ -1,3 +1,8 @@
+'''
+File: axis_controller.py
+
+Purpose: Wrapper class for pid.py
+'''
 from bluespark_autonomy.pid.pid import (
     make_depth_pid,
     make_heave_pid,

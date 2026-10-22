@@ -1,3 +1,10 @@
+'''
+File: pid.py
+
+Purpose: Having abstracted thing such as movemtn from logic in our behaviours and
+        other mission planning, wrapped around with axis_controller.py
+TODO: Tune the pid parameters!!!
+'''
 import time
 
 

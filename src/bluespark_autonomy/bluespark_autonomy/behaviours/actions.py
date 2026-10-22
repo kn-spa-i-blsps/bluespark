@@ -1,10 +1,16 @@
+'''
+File actions.py
+Purpose: Storing most commonly used behaviours responsible for movement
+'''
 import py_trees
 import time
 from math import hypot
 from bluespark_interfaces.srv import SetRCOverride
 from bluespark_autonomy.pid.axis_controller import AxisController
-
-
+"""
+Purpose: Base class for other more complicated actions, having 
+        functions that most of actions would implement otherwise.
+"""
 class BaseRCBehaviour(py_trees.behaviour.Behaviour):
 
     def __init__(self, name: str, active_axes: list):
@@ -30,11 +36,20 @@ class BaseRCBehaviour(py_trees.behaviour.Behaviour):
         for axis in self.active_axes:
             self._send_single_pwm(axis, self.axis_controller.STOP_PWM)
 
-
+'''
+Behaviour that tries to go throuhg a get, using computer vision, it does it with 3 seperate parts:
+    1. Searching - drone spins while it finds a gate
+    2. Approaching - drone approaches gate while it is further than TARGET_DISTANCE
+    3. Passing through - dron just tries to blindly run through the gat beacause camera might
+                        not see gate when it is in its centre
+    Uses PID from AcessController
+'''
+# TODO: It could be done smarter (maybe?)
 class ApproachGate(BaseRCBehaviour):
     def __init__(self, name: str, target_distance: float = 1.0,
-                 pass_through_duration: float = 7.5, pass_through_pwm: int = 1650):
-        # Rejestrujemy tylko te 3 osie, których fizycznie tu używamy
+                 pass_through_duration: float = 7.5, pass_through_pwm: int = 1650,
+                 target_label: str = "person"):
+                     
         super().__init__(name=name, active_axes=["yaw", "heave", "surge"])
 
         self.vision_bb = self.attach_blackboard_client(name=self.name, namespace="vision")
@@ -47,9 +62,8 @@ class ApproachGate(BaseRCBehaviour):
 
         self.current_state = self.STATE_SEARCHING
 
-        # x - odległość od bramki, po której zaczynamy przez nią przepływać
+        self.target_label = target_label
         self.TARGET_DISTANCE = target_distance
-        # t - jak długo płyniemy do przodu żeby przepłynąć przez bramkę
         self.PASS_THROUGH_DURATION = pass_through_duration
         self.PASS_THROUGH_PWM = pass_through_pwm
         self.pass_through_start_time = None
@@ -69,7 +83,7 @@ class ApproachGate(BaseRCBehaviour):
 
         target = None
         for obj in detected_objects.values():
-            if obj.label == "person":
+            if obj.label == self.target_label:
                 target = obj
                 break
 
@@ -134,7 +148,11 @@ class ApproachGate(BaseRCBehaviour):
         return py_trees.common.Status.RUNNING
 
 
-class AdjustDepth(BaseRCBehaviour):
+'''
+    This action tries to go near targeted depth
+    Uses: Axis Controller
+'''
+class DepthControl(BaseRCBehaviour):
     def __init__(self, name, target_depth):
         super().__init__(name=name, active_axes=["heave"])
 
@@ -164,27 +182,3 @@ class AdjustDepth(BaseRCBehaviour):
     def terminate(self, new_status):
         super().terminate(new_status)
         self.axis_controller.reset_all()
-
-
-# class OrbitObject(BaseRCBehaviour):
-#     def __init__(self, name):
-#         super().__init__(name=name, active_axes=["yaw", "surge", "sway"])
-#
-#
-#     def initialise(self):
-#         pass
-#
-#
-#     def update(self):
-#         pass
-#
-#
-#     def terminate(self):
-#         pass
-#
-
-# class RotateObject(BaseRCBehaviour):
-#     def __init__(self, name, axis):
-#         super().__init__(name=name, active_axes=["yaw"])
-#         self.goal_axis = axis
-#         self.starting_axis = self.attach_blackboard_client(name=self.name)
