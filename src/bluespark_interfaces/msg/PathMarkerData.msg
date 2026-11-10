@@ -1,8 +1,0 @@
-std_msgs/Header header
-bool detected
-float32 offset_x
-float32 angle_deg
-float32 confidence
-float32 area_fraction
-float32 tip_direction
-bool tip_direction_valid
