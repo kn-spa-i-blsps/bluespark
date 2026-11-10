@@ -1,17 +1,17 @@
-import rclpy
-from rclpy.node import Node
-from ament_index_python.packages import get_package_share_directory
-
 import os
 
-from bluespark_interfaces.msg import DetectedObject
-from bluespark_interfaces.msg import DetectedObjectArray
-from .detector import ObjectDetector
-from .simple_distance_calculator import SimpleDistanceCalculator
-from .image_utils import ros_image_to_cv2
-
-from rclpy.qos import QoSProfile, HistoryPolicy
+import rclpy
+from ament_index_python.packages import get_package_share_directory
+from rclpy.node import Node
+from rclpy.qos import HistoryPolicy, QoSProfile
 from sensor_msgs.msg import Image
+
+from bluespark_interfaces.msg import DetectedObject, DetectedObjectArray
+
+from .detector import ObjectDetector
+from .image_utils import ros_image_to_cv2
+from .simple_distance_calculator import SimpleDistanceCalculator
+
 
 class VisionNode(Node):
     def __init__(self):
@@ -26,16 +26,10 @@ class VisionNode(Node):
         self.detector = ObjectDetector(str(model_path))
         self.distance_calc = SimpleDistanceCalculator()
 
-        qos_profile = QoSProfile(
-            history=HistoryPolicy.KEEP_LAST,
-            depth=1
-        )
-        
+        qos_profile = QoSProfile(history=HistoryPolicy.KEEP_LAST, depth=1)
+
         self.subscription = self.create_subscription(
-            Image,
-            "camera/image_raw",
-            self.image_callback,
-            qos_profile
+            Image, "camera/image_raw", self.image_callback, qos_profile
         )
 
     def image_callback(self, msg: Image):
@@ -99,4 +93,3 @@ def main(args=None):
 
 if __name__ == "__main__":
     main()
-

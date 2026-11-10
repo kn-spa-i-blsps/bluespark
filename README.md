@@ -15,7 +15,7 @@ Docker installed on your machine.
 ## Environment Stack
 The Docker image is pre-configured with the following stack. If you choose to build the project locally without Docker, ensure you have these dependencies installed:
 
-- **Framework**: ROS 2 Humble
+- **Framework**: ROS 2 Jazzy
 - **Build System**: colcon (python3-colcon-common-extensions)
 - **Python**: Python 3 and pip
 - **System Libraries**: libgl1-mesa-glx (required for OpenGL/graphical interfaces)

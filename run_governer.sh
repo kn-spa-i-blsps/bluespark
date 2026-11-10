@@ -1,8 +1,8 @@
 #!/bin/bash
 #
-# run_governer.sh — supervisor for the brain (main) Raspberry Pi.
+# run_governer.sh — supervisor for the governer (main) Raspberry Pi.
 #
-# Replaces the manual "start eight nodes" part of test03.sh with a single
+# Replaces the old manual "start every node" scripts with a single
 # `ros2 launch governer.launch.py`, while KEEPING the safety/lifecycle logic that
 # launch does not provide:
 #   - distinguish a clean mission finish (rc=0) from a crash (rc!=0)
@@ -20,7 +20,7 @@ sleep 20
 WORKSPACE=$(dirname "$(realpath "$0")")
 
 echo "-- Loading base ROS 2 environment --"
-source /opt/ros/humble/setup.bash
+source /opt/ros/jazzy/setup.bash
 
 echo "-- Building the workspace --"
 cd "$WORKSPACE"

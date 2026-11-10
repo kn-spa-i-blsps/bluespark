@@ -19,8 +19,6 @@
 #     docker compose -f docker-compose.prod.yml up
 # =============================================================================
 
-version: '3.8'
-
 services:
   bluespark:
     build: .
@@ -38,7 +36,7 @@ services:
       # No X11 — the Pis are headless.
 
     environment:
-      - ROS_DOMAIN_ID=42        # MUST be identical on all four Pis.
+      - ROS_DOMAIN_ID=42 # MUST be identical on all four Pis.
       - ROS_LOCALHOST_ONLY=0
       - WHICH_RPI=${WHICH_RPI:?set WHICH_RPI in .env (front|down|side|governer)}
 
@@ -51,15 +49,17 @@ services:
     # changes without rebuilding the image.
     command: >
       bash -c '
-        source /opt/ros/humble/setup.bash &&
+        source /opt/ros/jazzy/setup.bash &&
         if [ "$WHICH_RPI" = "governer" ]; then
           exec bash /workspace/run_governer.sh ;
         else
-          pip3 install "setuptools==65.7.0" &&
           colcon build --symlink-install --parallel-workers 2 &&
           source /workspace/install/setup.bash &&
           exec ros2 launch bluespark_bringup ${WHICH_RPI}.launch.py ;
         fi
       '
+    # docker stop waits this long before SIGKILL (default 10 s). run_governer.sh
+    # needs up to ~12 s to disarm and stop the launch cleanly.
+    stop_grace_period: 20s
 
     restart: unless-stopped
