@@ -9,8 +9,25 @@ The `bluespark_vision` package provides real-time computer vision processing for
 - **Object Detection**: Using YOLO models for real-time inference
 - **3D Pose Estimation**: Calculates 3D position and orientation of detected objects relative to the camera
 - **Distance Calculation**: Computes distance to objects using camera calibration and known object dimensions
+- **Classic task detectors**: HSV/contour-based detectors for the pipeline, the path marker, and the bin, publishing a shared `VisionTarget` message
 - **Multi-Camera Support**: Supports USB cameras, Raspberry Pi CSI cameras, and TCP camera streams
 - **Publishing**: Publishes detected objects with their 3D poses at configurable rates
+
+### Architecture at a glance
+
+The camera is owned by a single node and shared by every detector. Detectors do
+**not** open the camera themselves — they subscribe to the frames it publishes:
+
+```
+                             ┌─▶ vision_node        ─▶ /detected_objects   (YOLO, 3D)
+camera_node ─▶ /camera/image_raw ─┼─▶ pipeline_node      ─▶ /pipeline/data      (VisionTarget)
+                             ├─▶ path_marker_node   ─▶ /path_marker/data   (VisionTarget)
+                             └─▶ bin_detector_node  ─▶ /bin/data           (VisionTarget)
+```
+
+This keeps a single camera as one shared resource: several detectors can run at
+once (e.g. following the pipeline on the bottom camera while YOLO watches for a
+gate), which would be impossible if each node opened its own camera.
 
 ## Dependencies
 
@@ -36,12 +53,48 @@ pip install ultralytics opencv-python numpy
 pip install picamera2  # For Raspberry Pi camera support
 ```
 
+Note: the classic detectors and the frame conversion helper (`image_utils`) rely
+only on `numpy` + `opencv-python`, so they do **not** require `cv_bridge`.
+
 
 ## Nodes
 
+### camera_node
+
+Owns the camera hardware and publishes frames for every other vision node to
+consume. **Every detector depends on this node** — if it is not running and
+publishing, the detectors receive no frames and produce no detections.
+
+#### Node Name
+`camera_node`
+
+#### Executable
+```bash
+ros2 run bluespark_vision camera_node
+```
+
+#### Published Topics
+
+| Topic Name | Message Type | Description |
+|-----------|--------------|-------------|
+| `/camera/image_raw` | `sensor_msgs/Image` | Raw BGR frames. The `frame_id` in the header identifies which physical camera the frame came from (relevant once multiple cameras are used). |
+
+#### Parameters
+
+| Parameter | Type | Default | Description |
+|-----------|------|---------|-------------|
+| `camera_mode` | string | `"auto"` | Camera selection mode: `"auto"` (auto-detect, rpi>tcp>usb), `"usb"` (USB camera), `"rpi"` (Raspberry Pi CSI), or `"tcp"` (TCP stream at 127.0.0.1:5000). |
+| `camera_width` | int | 640 | Camera frame width in pixels. |
+| `camera_height` | int | 480 | Camera frame height in pixels. |
+
+> Note: camera selection and resolution belong to `camera_node`. The detector
+> nodes never touch camera hardware; they only read `/camera/image_raw`.
+
+---
+
 ### vision_node
 
-The main node that runs the vision processing pipeline.
+The main node that runs the YOLO detection and 3D pose estimation pipeline.
 
 #### Node Name
 `vision_node_publisher`
@@ -55,7 +108,7 @@ ros2 run bluespark_vision vision_node
 
 | Topic Name | Message Type | Description |
 |-----------|--------------|-------------|
-| `/detected_objects` | `bluespark_interfaces/DetectedObjectArray` | Array of detected objects with 3D poses and distances. Published at ~5 Hz (timer period: 0.2s). |
+| `/detected_objects` | `bluespark_interfaces/DetectedObjectArray` | Array of detected objects with 3D poses and distances. |
 
 **Message Structure** (`DetectedObjectArray`):
 - `header` (std_msgs/Header): Timestamp and frame ID
@@ -71,24 +124,20 @@ ros2 run bluespark_vision vision_node
 
 #### Subscribed Topics
 
-None. The node operates independently, reading from camera hardware.
+| Topic Name | Message Type | Description |
+|-----------|--------------|-------------|
+| `/camera/image_raw` | `sensor_msgs/Image` | Raw frames from `camera_node`. |
 
 #### Parameters
-
-The following parameters can be set in the ROS 2 parameter server or passed as arguments when launching the node:
 
 | Parameter | Type | Default | Description |
 |-----------|------|---------|-------------|
 | `detection_threshold` | float | 0.5 | Objects detected with confidence below this threshold are filtered out. |
-| `inference_size` | int | 224 | Input image size for YOLO inference | 
-| `camera_mode` | string | `"auto"` | Camera selection mode: `"auto"` (auto-detect, rpi>tcp>usb), `"usb"` (USB camera), `"rpi"` (Raspberry Pi CSI), or `"tcp"` (TCP stream at 127.0.0.1:5000). |
-| `camera_width` | int | 640 | Camera frame width in pixels. |
-| `camera_height` | int | 480 | Camera frame height in pixels. |
-| `timer_period` | float | 0.2 | Time period between consecutive frames in seconds (5 Hz publishing rate). |
+| `inference_size` | int | 224 | Input image size for YOLO inference. |
 
 #### Processing Pipeline
 
-1. **Camera Capture**: Reads a frame from the configured camera source
+1. **Frame intake**: Receives a frame from `/camera/image_raw`
 2. **Object Detection**: Runs YOLO inference to detect objects in the frame
 3. **Pose Estimation**: For each detected object:
    - Calculates 3D position relative to camera using pinhole camera model
@@ -96,145 +145,144 @@ The following parameters can be set in the ROS 2 parameter server or passed as a
    - Estimates object rotation based on aspect ratio
 4. **Publishing**: Publishes detected objects as a `DetectedObjectArray` message
 
-## Configuration Files
+---
 
-### Camera Calibration (`calibration_files/camera_calibration.json`)
+### Classic detectors: pipeline_node / path_marker_node / bin_detector_node
 
-Contains camera intrinsic parameters and distortion coefficients in JSON format:
+Three lightweight HSV/contour detectors, one per competition task. They share the
+same shape: subscribe to `/camera/image_raw`, run their (untouched) detector
+class, smooth the result, and publish a **shared** `VisionTarget` message. Each
+one only **reports** what it sees — none of them commands motion.
 
-```json
-{
-  "camera_matrix": [
-    [fx, 0, cx],
-    [0, fy, cy],
-    [0, 0, 1]
-  ],
-  "dist_coeffs": [k1, k2, p1, p2, k3]
-}
+#### Executables
+```bash
+ros2 run bluespark_vision pipeline_node
+ros2 run bluespark_vision path_marker_node
+ros2 run bluespark_vision bin_detector_node
 ```
 
-Where:
-- `fx`, `fy`: Focal length in pixels
-- `cx`, `cy`: camera center point in pixels
-- `k1`, `k2`, `k3`: Radial distortion coefficients
-- `p1`, `p2`: Tangential distortion coefficients
+#### The shared VisionTarget message
 
-### Object Configuration (`calibration_files/object_config.json`)
+All three detectors publish `bluespark_interfaces/VisionTarget`. Because it is
+shared across three different tasks, **each detector fills only a subset of the
+fields, and leaves the rest at defaults (0 / empty / false).** A consumer must
+know which fields are meaningful for the `source` it is reading.
 
-Defines real-world dimensions of objects for distance calculation:
+| Field | Type | Meaning |
+|-------|------|---------|
+| `header` | std_msgs/Header | `frame_id` is copied from the incoming frame → identifies the source camera. |
+| `source` | string | Which detector produced this: `"pipeline"`, `"path_marker"`, or `"bin"`. Read this to know how to interpret the rest. |
+| `detected` | bool | Whether the primary target was found this frame. **Always check first.** |
+| `offset_x` | float32 | Horizontal offset of the target from image center, `[-1, 1]`. Negative = left, positive = right. |
+| `offset_y` | float32 | Vertical offset, `[-1, 1]`. (Pipeline leaves this at 0.) |
+| `angle_deg` | float32 | Orientation of the target/line, `[-90, 90]`. (Bin leaves this at 0.) |
+| `area_fraction` | float32 | Fraction of the frame the target occupies (proximity). (Pipeline leaves this at 0.) |
+| `symbol` | string | Bin only: `"flame"` / `"drop"` / `""`. Empty for the others. |
+| `confidence` | float32 | **Meaning depends on source — see per-detector notes below.** |
+| `tip_direction` | float32 | Path marker only: arrow pointing angle `[0, 360]`. |
+| `tip_direction_valid` | bool | Path marker only: whether `tip_direction` is meaningful. |
+| `bbox_x/y/w/h` | int32 | Pixel bounding box. **Meaning depends on source — see notes.** |
 
-```json
-{
-  "objects": {
-    "object_name": {
-      "real_width": <width_in_meters>,
-      "real_height": <height_in_meters>
-    }
-  }
-}
-```
+##### Three non-obvious things every consumer must know
 
-Example:
-```json
-{
-  "objects": {
-    "bottle": {
-      "real_width": 0.08,
-      "real_height": 0.30
-    },
-    "person": {
-      "real_width": 0.45,
-      "real_height": 1.70
-    }
-  }
-}
-```
+Because the message is shared, three fields are overloaded in ways that are not
+visible from the field name alone:
 
-## Usage Examples
+1. **`pipeline` reuses `bbox_w` for line width.** `VisionTarget` has no dedicated
+   "line width" field, so for `source == "pipeline"` the pixel width of the
+   detected line is carried in `bbox_w`. The other bbox fields are 0. Do **not**
+   read it as a bounding-box width for the pipeline.
 
-### Basic Launch
+2. **`path_marker` has two independent validity flags.** `detected` means "I see
+   the marker"; `tip_direction_valid` means "I also know which way it points".
+   These can differ: the marker can be reliably detected (`detected == true`)
+   while its direction is undetermined (`tip_direction_valid == false`, e.g. the
+   arrow is too symmetric or too small). If you need the pointing direction,
+   check `tip_direction_valid`, **not** `detected`.
+
+3. **`bin` overloads `confidence` to mean *symbol* confidence, and `symbol` can be
+   empty even when detected.** For the bin, `confidence` is how sure we are about
+   the **symbol**, not about seeing the container. And `detected == true` with
+   `symbol == ""` is a valid state: "I see the bin but haven't determined the
+   symbol yet". So "I see the bin" (`detected`) and "I know the symbol"
+   (`symbol != ""`) are two separate conditions.
+
+##### Shared smoothing behavior
+
+All three apply an exponential moving average (EMA): `smoothed = alpha * new +
+(1 - alpha) * previous` (default `alpha = 0.7`). When a frame has **no**
+detection, they do **not** snap offsets back to zero — instead `confidence`
+**decays** (`confidence *= (1 - alpha)`) while the last geometry persists. A brief
+loss of the target therefore fades confidence rather than throwing the control
+sideways; a consumer should gate on a confidence threshold.
+
+---
+
+#### pipeline_node
+
+Detects the pipeline (a bright line on the pool floor) so the robot can follow it.
+
+- **Publishes**: `/pipeline/data`, `source = "pipeline"`
+- **Fills**: `detected`, `offset_x` (sway correction), `angle_deg` (yaw correction), `confidence` (line length ÷ frame diagonal), `bbox_w` (= line width in px, see note 1)
+- **Algorithm**: HSV threshold → morphological cleanup → Canny + probabilistic Hough → pick the **longest** line segment → measure its center offset, tilt, and length.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `hsv_h_min`/`hsv_h_max` | 0 / 180 | Hue range of the line. |
+| `hsv_s_min`/`hsv_s_max` | 0 / 35 | Saturation range (low = washed-out / white). |
+| `hsv_v_min`/`hsv_v_max` | 200 / 255 | Value range (high = bright). |
+| `hough_threshold` | 50 | Min votes for a Hough line. |
+| `hough_min_line_length` | 80 | Shortest accepted segment (px). |
+| `hough_max_line_gap` | 30 | Max gap bridged within one line (px). |
+| `ema_alpha` | 0.7 | Smoothing factor. |
+
+#### path_marker_node
+
+Detects the orange arrow-shaped path marker and the direction it points.
+
+- **Publishes**: `/path_marker/data`, `source = "path_marker"`
+- **Fills**: `detected`, `offset_x`, `angle_deg`, `confidence`, `area_fraction`, `tip_direction`, `tip_direction_valid` (see note 2)
+- **Algorithm**: HSV threshold → morphology → largest contour → reject if too small (`min_area_fraction`) or not elongated enough (`min_aspect_ratio`) → `minAreaRect` gives the marker angle → **tip direction** is derived from contour moments (the arrow's mass is asymmetric, so the vector from the geometric center to the center of mass points toward the tip).
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `hsv_h_min`/`hsv_h_max` | 10 / 25 | Hue range (orange). |
+| `hsv_s_min`/`hsv_s_max` | 100 / 255 | Saturation range. |
+| `hsv_v_min`/`hsv_v_max` | 100 / 255 | Value range. |
+| `min_area_fraction` | 0.005 | Reject contours smaller than this fraction of the frame. |
+| `min_aspect_ratio` | 2.0 | Reject contours that are not elongated (filters non-arrow blobs). |
+| `ema_alpha` | 0.7 | Smoothing factor. |
+
+#### bin_detector_node
+
+Detects the bin (a colored container) and identifies the symbol inside it.
+
+- **Publishes**: `/bin/data`, `source = "bin"`
+- **Fills**: `detected`, `offset_x`, `offset_y`, `area_fraction`, `symbol` (`"flame"`/`"drop"`/`""`), `confidence` (= symbol confidence, see note 3), full `bbox_x/y/w/h` (real container box)
+- **Algorithm** (two stages):
+  1. **Find the container** by HSV → morphology → largest contour → bounding box → offsets + area.
+  2. **Identify the symbol** inside that box, using one of two methods (`symbol_method`): **HSV** (compare how many pixels match the flame color vs the drop color) or **template matching** (match provided flame/drop template images).
+- **Symbol stabilization**: a single frame can misread the symbol, so the node keeps a **majority vote over a sliding window** (`vote_window` frames) and publishes the winner. The geometry (`offset_x/y`, `area_fraction`, symbol confidence) is EMA-smoothed as usual. When the bin leaves the frame, the vote history is cleared and the symbol resets to empty.
+
+| Parameter | Default | Description |
+|-----------|---------|-------------|
+| `symbol_method` | `"hsv"` | `"hsv"` or `"template"`. |
+| `bin_hsv_h/s/v_min/max` | 100–130 / 80–255 / 30–150 | HSV range of the container. |
+| `flame_hsv_*` | 0–25 / 100–255 / 150–255 | HSV range of the flame symbol. |
+| `drop_hsv_*` | 140–170 / 80–255 / 150–255 | HSV range of the drop symbol. |
+| `flame_template_path` / `drop_template_path` | `""` | Template images (only for `template` method). |
+| `template_threshold` | 0.7 | Min match score for template method. |
+| `min_bin_area_fraction` | 0.01 | Reject containers smaller than this fraction of the frame. |
+| `ema_alpha` | 0.7 | Smoothing factor. |
+| `vote_window` | 10 | Frames in the symbol majority-vote window. |
+
+#### Inspecting any detector
 
 ```bash
-ros2 run bluespark_vision vision_node
-```
-
-### Launch with USB Camera
-
-```bash
-ros2 run bluespark_vision vision_node --ros-args -p camera_mode:=usb -p camera_width:=640 -p camera_height:=480
-```
-
-### Launch with Raspberry Pi Camera
-
-```bash
-ros2 run bluespark_vision vision_node --ros-args -p camera_mode:=rpi
-```
-
-### Launch with TCP Camera Stream
-
-```bash
-ros2 run bluespark_vision vision_node --ros-args -p camera_mode:=tcp
-```
-
-### Launch with Custom Detection Threshold
-
-```bash
-ros2 run bluespark_vision vision_node --ros-args -p detection_threshold:=0.7 -p inference_size:=320
-```
-
-### Subscribe to Detections in Another Node
-
-```python
-import rclpy
-from rclpy.node import Node
-from bluespark_interfaces.msg import DetectedObjectArray
-
-class DetectionListener(Node):
-    def __init__(self):
-        super().__init__('detection_listener')
-        self.subscription = self.create_subscription(
-            DetectedObjectArray,
-            'detected_objects',
-            self.detections_callback,
-            10
-        )
-    
-    def detections_callback(self, msg):
-        self.get_logger().info(f'Detected {len(msg.objects)} objects')
-        for obj in msg.objects:
-            self.get_logger().info(
-                f'  - {obj.label}: confidence={obj.confidence:.2f}, '
-                f'distance={obj.pos_z:.2f}m, '
-                f'h_angle={obj.cam_h_angle_deg:.1f}°, '
-                f'v_angle={obj.cam_v_angle_deg:.1f}°'
-            )
-
-def main(args=None):
-    rclpy.init(args=args)
-    listener = DetectionListener()
-    rclpy.spin(listener)
-    listener.destroy_node()
-    rclpy.shutdown()
-
-if __name__ == '__main__':
-    main()
-```
-
-### Monitor Detections with ROS 2 CLI
-
-```bash
-# View all published messages
-ros2 topic echo /detected_objects
-
-# Show topic information
-ros2 topic info /detected_objects
-
-# Monitor publishing rate
-ros2 topic hz /detected_objects
-
-# Display message type details
-ros2 interface show bluespark_interfaces/msg/DetectedObjectArray
-ros2 interface show bluespark_interfaces/msg/DetectedObject
+ros2 topic echo /pipeline/data
+ros2 topic echo /path_marker/data
+ros2 topic echo /bin/data
+ros2 interface show bluespark_interfaces/msg/VisionTarget
 ```
 
 ## Calibration
@@ -267,16 +315,25 @@ Measure objects in their typical orientation relative to the camera and record b
 
 ## File Overviews
 
-### Structure 
+### Structure
 
 ```
 bluespark_vision/
 ├── bluespark_vision/
-│   ├── vision_node.py                      # Main ROS 2 node
+│   ├── camera_node.py                      # Owns the camera, publishes /camera/image_raw
+│   ├── vision_node.py                      # YOLO detection + 3D pose node
+│   ├── pipeline_node.py                    # Pipeline follower detector node
+│   ├── path_marker_node.py                 # Path marker detector node
+│   ├── bin_detector_node.py                # Bin + symbol detector node
+│   ├── image_utils.py                      # ROS Image <-> numpy conversion (no cv_bridge)
 │   ├── detector.py                         # YOLO object detector wrapper
 │   ├── simple_distance_calculator.py       # 3D pose and distance calculator
 │   ├── camera.py                           # Universal camera interface
-│   └── exceptions.py                       # Custom camera exception classes
+│   ├── exceptions.py                       # Custom camera exception classes
+│   └── detectors/                          # Classic detector logic (task-specific)
+│       ├── pipeline.py                     # HSV + Hough line detector
+│       ├── path_marker.py                  # HSV + contour arrow detector
+│       └── bin_detector.py                 # HSV/template bin + symbol detector
 ├── calibration_files/
 │   ├── camera_calibration.json             # Camera parameters
 │   └── object_config.json                  # Object dimensions configuration
@@ -290,7 +347,13 @@ bluespark_vision/
 
 ### Core Modules
 
-**vision_node.py**: Main ROS 2 node implementing the vision processing pipeline. Manages node lifecycle, timers, publishers, and orchestrates the detection and pose estimation workflow.
+**camera_node.py**: Owns the camera hardware and publishes frames on `/camera/image_raw`. The single source of frames for every detector.
+
+**vision_node.py**: ROS 2 node implementing the YOLO detection + pose estimation pipeline. Subscribes to `/camera/image_raw`, publishes `DetectedObjectArray`.
+
+**pipeline_node.py / path_marker_node.py / bin_detector_node.py**: The three classic-detector nodes. Each subscribes to `/camera/image_raw`, runs its detector from `detectors/`, smooths the result, and publishes a `VisionTarget`.
+
+**image_utils.py**: Lightweight conversion between `sensor_msgs/Image` and numpy arrays, using only numpy (a `cv_bridge` replacement).
 
 **detector.py**: Wrapper around YOLO for object detection. Handles model loading, inference, and bounding box extraction.
 
@@ -299,6 +362,8 @@ bluespark_vision/
 **camera.py**: Universal camera interface supporting multiple camera types (USB, Raspberry Pi CSI, TCP). Abstracts camera hardware differences behind a single API.
 
 **exceptions.py**: Custom exception classes for camera initialization errors.
+
+**detectors/**: The task-specific detection logic (pure OpenCV/numpy, no ROS). Each detector takes a frame and returns a small dataclass; the corresponding node wraps it in a `VisionTarget`.
 
 ## Related Packages
 

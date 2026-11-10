@@ -1,0 +1,224 @@
+"""
+File actions.py
+Purpose: Storing most commonly used behaviours responsible for movement
+"""
+
+import time
+from math import hypot
+
+import py_trees
+
+from bluespark_autonomy.pid.axis_controller import AxisController
+from bluespark_interfaces.srv import SetRCOverride
+
+"""
+Purpose: Base class for other more complicated actions, having
+        functions that most of actions would implement otherwise.
+"""
+
+
+class BaseRCBehaviour(py_trees.behaviour.Behaviour):
+    def __init__(self, name: str, active_axes: list):
+        super().__init__(name=name)
+        self.active_axes = active_axes
+        self.clients = {}
+        self.axis_controller = AxisController()
+
+    def setup(self, **kwargs):
+        try:
+            node = kwargs["node"]
+            for axis in self.active_axes:
+                self.clients[axis] = node.create_client(
+                    SetRCOverride, f"control/set_{axis}"
+                )
+        except KeyError:
+            self.logger.error(f"[{self.name}] ROS 2 node reference missing in setup()!")
+
+    def _send_single_pwm(self, axis, pwm_value):
+        if axis in self.clients and self.clients[axis].service_is_ready():
+            req = SetRCOverride.Request(pwm_value=int(pwm_value))
+            self.clients[axis].call_async(req)
+
+    def terminate(self, new_status):
+        for axis in self.active_axes:
+            self._send_single_pwm(axis, self.axis_controller.STOP_PWM)
+
+
+"""
+Behaviour that tries to go throuhg a get, using computer vision, it does it with 3 seperate parts:
+    1. Searching - drone spins while it finds a gate
+    2. Approaching - drone approaches gate while it is further than TARGET_DISTANCE
+    3. Passing through - dron just tries to blindly run through the gat beacause camera might
+                        not see gate when it is in its centre
+    Uses PID from AcessController
+"""
+
+
+# TODO: It could be done smarter (maybe?)
+class ApproachGate(BaseRCBehaviour):
+    def __init__(
+        self,
+        name: str,
+        target_distance: float = 1.0,
+        pass_through_duration: float = 7.5,
+        pass_through_pwm: int = 1650,
+        target_label: str = "person",
+    ):
+
+        super().__init__(name=name, active_axes=["yaw", "heave", "surge"])
+
+        self.vision_bb = self.attach_blackboard_client(
+            name=self.name, namespace="vision"
+        )
+        self.vision_bb.register_key(
+            key="detected_objects", access=py_trees.common.Access.READ
+        )
+
+        self.STATE_SEARCHING = "SEARCHING"
+        self.STATE_CENTERING = "CENTERING"
+        self.STATE_APPROACHING = "APPROACHING"
+        self.STATE_PASSING_THROUGH = "PASSING_THROUGH"
+
+        self.current_state = self.STATE_SEARCHING
+
+        self.target_label = target_label
+        self.TARGET_DISTANCE = target_distance
+        self.PASS_THROUGH_DURATION = pass_through_duration
+        self.PASS_THROUGH_PWM = pass_through_pwm
+        self.pass_through_start_time = None
+
+    def initialise(self):
+        pass
+
+    def update(self):
+        if self.current_state == self.STATE_PASSING_THROUGH:
+            return self._pass_through()
+
+        detected_objects = (
+            self.vision_bb.detected_objects
+            if self.vision_bb.exists("detected_objects")
+            else {}
+        )
+
+        if not detected_objects:
+            self._stop_and_search()
+            return py_trees.common.Status.RUNNING
+
+        target = None
+        for obj in detected_objects.values():
+            if obj.label == self.target_label:
+                target = obj
+                break
+
+        if target is None:
+            self._stop_and_search()
+            return py_trees.common.Status.RUNNING
+
+        DEADBAND_ANGLE = 10.0
+
+        error_yaw = target.cam_h_angle_deg
+        error_heave = target.cam_v_angle_deg
+        error_dist = (
+            hypot(target.pos_x, target.pos_y, target.pos_z) - self.TARGET_DISTANCE
+        )
+
+        is_centered = (abs(error_yaw) < DEADBAND_ANGLE) and (
+            abs(error_heave) < DEADBAND_ANGLE
+        )
+
+        self.current_state = (
+            self.STATE_APPROACHING if is_centered else self.STATE_CENTERING
+        )
+
+        if self.current_state == self.STATE_CENTERING:
+            self._send_single_pwm("surge", self.axis_controller.STOP_PWM)
+
+            if abs(error_yaw) > DEADBAND_ANGLE:
+                self._send_single_pwm(
+                    "yaw", self.axis_controller.update("yaw", error_yaw)
+                )
+            else:
+                self._send_single_pwm("yaw", self.axis_controller.STOP_PWM)
+            if abs(error_heave) > DEADBAND_ANGLE:
+                self._send_single_pwm(
+                    "heave", self.axis_controller.update("heave", error_heave)
+                )
+            else:
+                self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
+
+        elif self.current_state == self.STATE_APPROACHING:
+            self._send_single_pwm("yaw", self.axis_controller.STOP_PWM)
+            self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
+
+            if error_dist <= 0:
+                return self._start_pass_through()
+
+            self._send_single_pwm(
+                "surge", self.axis_controller.update("surge", error_dist)
+            )
+
+        return py_trees.common.Status.RUNNING
+
+    def terminate(self, new_status):
+        super().terminate(new_status)
+        self.axis_controller.reset_all()
+
+    def _stop_and_search(self):
+        self.current_state = self.STATE_SEARCHING
+        self._send_single_pwm("surge", self.axis_controller.STOP_PWM)
+        self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
+        self._send_single_pwm("yaw", 1550)
+
+    def _start_pass_through(self):
+        self.current_state = self.STATE_PASSING_THROUGH
+        self.pass_through_start_time = time.time()
+        return self._pass_through()
+
+    def _pass_through(self):
+        if time.time() - self.pass_through_start_time >= self.PASS_THROUGH_DURATION:
+            self._send_single_pwm("surge", self.axis_controller.STOP_PWM)
+            return py_trees.common.Status.SUCCESS
+
+        self._send_single_pwm("surge", self.PASS_THROUGH_PWM)
+        return py_trees.common.Status.RUNNING
+
+
+"""
+    This action tries to go near targeted depth
+    Uses: Axis Controller
+"""
+
+
+class DepthControl(BaseRCBehaviour):
+    def __init__(self, name, target_depth):
+        super().__init__(name=name, active_axes=["heave"])
+
+        self.depth_bb = self.attach_blackboard_client(name=self.name, namespace="depth")
+        self.depth_bb.register_key(
+            key="current_depth", access=py_trees.common.Access.READ
+        )
+
+        self.target_depth = target_depth
+        self.DEADBAND_DEPTH = 0.15
+
+    def initialise(self):
+        pass
+
+    def update(self):
+        if not self.depth_bb.exists("current_depth"):
+            return py_trees.common.Status.RUNNING
+
+        depth_error = self.target_depth - self.depth_bb.current_depth
+
+        if abs(depth_error) < self.DEADBAND_DEPTH:
+            self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
+            return py_trees.common.Status.SUCCESS
+        else:
+            heave_pwm = self.axis_controller.update("heave", depth_error)
+            # FIXME: czy tutaj dobrze ze dajemy depth error w netrach gdzie dla kamery jest w stopniach aka czy tego nie meiszamy
+            self._send_single_pwm("heave", heave_pwm)
+            return py_trees.common.Status.RUNNING
+
+    def terminate(self, new_status):
+        super().terminate(new_status)
+        self.axis_controller.reset_all()

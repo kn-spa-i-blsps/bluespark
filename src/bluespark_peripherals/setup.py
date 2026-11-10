@@ -1,6 +1,6 @@
 from setuptools import find_packages, setup
 
-package_name = 'bluespark_navigation'
+package_name = 'bluespark_peripherals'
 
 setup(
     name=package_name,
@@ -13,8 +13,8 @@ setup(
     ],
     install_requires=['setuptools'],
     zip_safe=True,
-    maintainer='root',
-    maintainer_email='root@todo.todo',
+    maintainer='jappa',
+    maintainer_email='jappa414@gmail.com',
     description='TODO: Package description',
     license='TODO: License declaration',
     extras_require={
@@ -24,8 +24,7 @@ setup(
     },
     entry_points={
         'console_scripts': [
-            'movement_node = bluespark_navigation.movement_node:main',
-            'depth_hold_node = bluespark_navigation.depth_hold_node:main',
-            'depth_estimator_node = bluespark_navigation.depth_estimator_node:main'        ],
+            'servo_node = bluespark_peripherals.servo_node:main',
+        ],
     },
 )
