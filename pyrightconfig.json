@@ -1,0 +1,13 @@
+{
+  "pythonVersion": "3.12",
+  "extraPaths": [
+    "/opt/ros/jazzy/lib/python3.12/site-packages",
+    "src/bluespark_autonomy",
+    "src/bluespark_bringup",
+    "src/bluespark_control",
+    "src/bluespark_vision",
+    "build/bluespark_interfaces/rosidl_generator_py"
+  ],
+  "exclude": ["**/build", "**/install", "**/log", "**/__pycache__", "**/.*"],
+  "typeCheckingMode": "standard"
+}
