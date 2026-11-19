@@ -25,8 +25,19 @@ import rclpy
 from mavros_msgs.msg import OverrideRCIn
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 
 from bluespark_interfaces.srv import SetRCOverride
+
+# Readiness announcement read by governer.launch.py (bluespark_bringup/wait_for.py).
+# transient_local = latched, so a late subscriber still receives it.
+READY_TOPIC = "/bluespark/ready"
+READY_QOS = QoSProfile(
+    depth=1,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+)
 
 
 # TODO: add dead man swithc to avoid giving power to engines if exception is thrown
@@ -63,6 +74,10 @@ class RCOverrideNode(Node):
         self.srv_sway = self.create_service(
             SetRCOverride, "control/set_sway", self.cb_sway
         )
+
+        # All services exist -> tell the launch we are ready.
+        self.ready_pub = self.create_publisher(String, READY_TOPIC, READY_QOS)
+        self.ready_pub.publish(String(data="rc_override"))
 
     def publish_rc_state(self):
         msg = OverrideRCIn()

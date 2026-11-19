@@ -9,12 +9,17 @@ behaviour tree:
   vehicle_manager   -> arming + mode services (/manager/set_arming, /manager/set_mode)
   autonomy (py_trees) -> the mission behaviour tree   [only if run_autonomy:=true]
 
-Startup ORDER matters (each depends on the previous), so nodes are staggered
-with TimerAction delays that mirror the sleeps in the old test03.sh:
-  mavros            at t=0
-  rc_override       at t=3   (after mavros link)
-  vehicle_manager   at t=5
-  autonomy          at t=12  (after MAVROS is connected)   [optional]
+Startup ORDER matters, so each step waits until the previous one is really
+ready (WaitForMessage, see bluespark_bringup/wait_for.py), not a fixed delay:
+  1. mavros
+  2. wait for /mavros/state with connected == True        (Pixhawk link is up)
+  3. rc_override_node + vehicle_manager_node, together
+  4. wait until both published their name on /bluespark/ready  (services created)
+  5. autonomy                                                   [optional]
+If a wait times out (MAVROS_TIMEOUT / STACK_TIMEOUT), the launch shuts down with
+return code 1, so run_governer.sh treats it as a crash (disarm + restart).
+Debug readiness with:
+    ros2 topic echo /bluespark/ready --qos-durability transient_local
 
 DEV vs PROD:
   * PROD (run_governer.sh): launches with defaults -> autonomy runs.
@@ -33,12 +38,20 @@ merely because the stack came up.
 """
 
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, TimerAction
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
+from mavros_msgs.msg import State
+from std_msgs.msg import String
+
+from bluespark_bringup.wait_for import READY_QOS, READY_TOPIC, WaitForMessage, ready_all
+
+# How long to wait for each step before giving up (seconds).
+MAVROS_TIMEOUT = 30.0   # mavros started -> FCU connected
+STACK_TIMEOUT = 15.0    # control nodes started -> both announced ready
 
 
 def generate_launch_description():
@@ -66,7 +79,7 @@ def generate_launch_description():
     autonomy_executable = LaunchConfiguration("autonomy_executable")
     run_autonomy = LaunchConfiguration("run_autonomy")
 
-    # --- mavros (t=0) ---
+    # --- 1. mavros ---
     mavros = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("mavros"), "launch", "apm.launch"])
@@ -74,44 +87,47 @@ def generate_launch_description():
         launch_arguments={"fcu_url": fcu_url}.items(),
     )
 
-    # --- rc_override_node (t=3) ---
-    rc_override = TimerAction(
-        period=3.0,
-        actions=[
-            Node(
-                package="bluespark_control",
-                executable="rc_override_node",
-                name="rc_override_node",
-                output="screen",
-            )
-        ],
+    # --- 3. control nodes (started together once mavros is connected) ---
+    rc_override = Node(
+        package="bluespark_control",
+        executable="rc_override_node",
+        name="rc_override_node",
+        output="screen",
+    )
+    vehicle_manager = Node(
+        package="bluespark_control",
+        executable="vehicle_manager_node",
+        name="vehicle_manager_node",
+        output="screen",
     )
 
-    # --- vehicle_manager_node (t=5) ---
-    vehicle_manager = TimerAction(
-        period=5.0,
-        actions=[
-            Node(
-                package="bluespark_control",
-                executable="vehicle_manager_node",
-                name="vehicle_manager_node",
-                output="screen",
-            )
-        ],
+    # --- 5. autonomy / py_trees --- only when run_autonomy is true.
+    autonomy = Node(
+        package="bluespark_autonomy",
+        executable=autonomy_executable,
+        name="autonomy_node",
+        output="screen",
+        condition=IfCondition(run_autonomy),
     )
 
-    # --- autonomy / py_trees (t=12) --- only when run_autonomy is true.
-    autonomy = TimerAction(
-        period=12.0,
-        actions=[
-            Node(
-                package="bluespark_autonomy",
-                executable=autonomy_executable,
-                name="autonomy_node",
-                output="screen",
-                condition=IfCondition(run_autonomy),
-            )
-        ],
+    # --- 4. wait for both control nodes, then start autonomy ---
+    wait_for_control = WaitForMessage(
+        READY_TOPIC,
+        String,
+        ready_all({"rc_override", "manager"}),
+        qos=READY_QOS,
+        timeout=STACK_TIMEOUT,
+        then=[autonomy],
+    )
+
+    # --- 2. wait for the FCU link, then start the control nodes ---
+    wait_for_mavros = WaitForMessage(
+        "/mavros/state",
+        State,
+        lambda msg: msg.connected,
+        description="connected",
+        timeout=MAVROS_TIMEOUT,
+        then=[rc_override, vehicle_manager, wait_for_control],
     )
 
     return LaunchDescription(
@@ -120,8 +136,6 @@ def generate_launch_description():
             autonomy_exe_arg,
             run_autonomy_arg,
             mavros,
-            rc_override,
-            vehicle_manager,
-            autonomy,
+            wait_for_mavros,
         ]
     )

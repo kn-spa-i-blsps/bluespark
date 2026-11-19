@@ -5,7 +5,18 @@ from mavros_msgs.msg import State
 from mavros_msgs.srv import CommandBool, SetMode
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from std_msgs.msg import String
 from std_srvs.srv import SetBool
+
+# Readiness announcement read by governer.launch.py (bluespark_bringup/wait_for.py).
+# transient_local = latched, so a late subscriber still receives it.
+READY_TOPIC = "/bluespark/ready"
+READY_QOS = QoSProfile(
+    depth=1,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+)
 
 """
 Arming, disarming and mode setting needed to use rc_override node.
@@ -181,6 +192,10 @@ def main(args=None):
     executor.add_node(mode_node)
     executor.add_node(arming_node)
     executor.add_node(state_listener_node)
+
+    # All three nodes and their services exist -> tell the launch we are ready.
+    ready_pub = arming_node.create_publisher(String, READY_TOPIC, READY_QOS)
+    ready_pub.publish(String(data="manager"))
 
     def handle_sigterm(signum, frame):
         raise KeyboardInterrupt()

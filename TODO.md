@@ -25,9 +25,13 @@ them should also be listed here.
 - [ ] **Mission crash is not noticed by the supervisor.** Add `on_exit=Shutdown()` to the autonomy
       node in `governer.launch.py`. Must go together with changing `restart:` for the governer in
       `docker-compose.prod.yml`, otherwise a cleanly finished mission restarts forever.
-- [ ] **Mission starts after a fixed 12 s, not after the Pixhawk is connected.** If mavros is not
+      Note: `Shutdown()` makes `ros2 launch` exit with **0**, so `run_governer.sh` cannot tell a crashed
+      mission from a finished one. A crash needs a non-zero exit (e.g. a failed action future, like
+      the timeout in `bluespark_bringup/wait_for.py`).
+- [x] **Mission starts after a fixed 12 s, not after the Pixhawk is connected.** If mavros is not
       connected yet, `ArmRobot` fails and the mission ends without doing anything. Wait for
-      `state/connected` before arming.
+      `state/connected` before arming. Fixed: `governer.launch.py` now waits for `/mavros/state`
+      `connected` and for both control nodes on `/bluespark/ready` (`bluespark_bringup/wait_for.py`).
 - [ ] **`/manager/set_arming` and `/manager/set_mode` always report success**, before mavros answers.
       The tree is fine (`ArmRobot` / `SetFlightMode` call mavros directly and check the result),
       but `run_governer.sh` disarms through `/manager/...`, so a failed disarm goes unnoticed.
@@ -115,7 +119,7 @@ It is in git at `520869f^` (`src/bluespark_peripherals/`, with a README). When i
       `pgrep -a rpicam`, `sudo ss -ltnp | grep 5000`.
       Then either start the stream on the host (document the service, keep `run_camera_tcp.sh`,
       remove `ExecuteProcess` from the launches) or install `rpicam-apps` in the image.
-- [ ] `governer.launch.py` docstring mentions the removed `benchTest` and `test03.sh`.
+- [ ] `governer.launch.py` docstring mentions the removed `benchTest`.
 - [ ] `package.xml`: "brain" -> "governer". `side.launch.py` docstring says "front camera".
 - [ ] Merge `front` / `side` / `down` into one `camera.launch.py` with parameters
       (the three files are identical except for names).
