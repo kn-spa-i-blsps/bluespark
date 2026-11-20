@@ -1,0 +1,7 @@
+# Overrides applied on top of ../docker-compose.dev.yml when the repo is opened
+# as a Dev Container. Keeps the editor container separate from a manually
+# started `docker compose -f docker-compose.dev.yml up bluespark_dev`, so the
+# two never fight over the fixed container_name.
+services:
+  bluespark_dev:
+    container_name: bluespark_devcontainer
