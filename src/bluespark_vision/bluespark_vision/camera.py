@@ -20,18 +20,19 @@ class UniversalCamera:
     no mode (or auto) is selected). Use appropriate camera device.
     """
 
-    def __init__(self, width=640, height=480, mode: str = "auto"):
+    def __init__(self, width=640, height=480, mode: str = "auto", tcp_port: int = 5000):
         self.width = width
         self.height = height
         self.rpi_cam = None
         self.cv_cam = None
         self.mode = mode
+        self.tcp_port = tcp_port
 
         self.init_camera()
 
     def init_camera(self):
         if self.mode == "tcp":
-            self._init_cv_camera("tcp://127.0.0.1:5000")
+            self._init_cv_camera(f"tcp://127.0.0.1:{self.tcp_port}")
             return
         use_rpi = False
         if self.mode == "rpi":
@@ -90,12 +91,20 @@ class UniversalCamera:
                 time.sleep(0.5)
 
     def _init_cv_camera(self, source):
+        # _update_frame reconnects to this source when the capture drops.
+        self.source = source
         self.cv_cam = cv2.VideoCapture(source)
         self.cv_cam.set(cv2.CAP_PROP_FRAME_WIDTH, self.width)
         self.cv_cam.set(cv2.CAP_PROP_FRAME_HEIGHT, self.height)
         if not self.cv_cam.isOpened():
-            raise CameraError(f"USB camera cap is not opened.")
-    
+            if isinstance(source, str):
+                # TCP stream: rpicam-vid may not be listening yet (it starts at
+                # the same time as this node). Let _update_frame keep retrying
+                # instead of crashing the node.
+                print(f"[CAM] {source} not up yet, will keep retrying in the background.")
+            else:
+                raise CameraError("USB camera cap is not opened.")
+
         self.latest_frame = None
         self.is_running = True
         self.lock = threading.Lock()

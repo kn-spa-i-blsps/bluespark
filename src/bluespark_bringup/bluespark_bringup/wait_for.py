@@ -32,11 +32,12 @@ import asyncio
 from typing import Callable, Iterable, List, Optional
 
 import launch
-from launch import LaunchContext, LaunchDescriptionEntity
+from launch import LaunchContext, LaunchDescriptionEntity, SomeSubstitutionsType
 from launch.action import Action
 from launch.event import Event
 from launch.event_handler import EventHandler
 from launch.event_handlers import OnShutdown
+from launch.utilities import normalize_to_list_of_substitutions, perform_substitutions
 from launch_ros.ros_adapters import get_ros_node
 from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 
@@ -80,7 +81,7 @@ class WaitForMessage(Action):
 
     def __init__(
         self,
-        topic: str,
+        topic: SomeSubstitutionsType,
         msg_type,
         predicate: Callable,
         then: List[LaunchDescriptionEntity],
@@ -91,7 +92,10 @@ class WaitForMessage(Action):
         **kwargs,
     ) -> None:
         super().__init__(**kwargs)
-        self.__topic = topic
+        # May contain substitutions (e.g. ['/', LaunchConfiguration('namespace'), '/x']);
+        # resolved to a plain string in execute().
+        self.__topic_subs = normalize_to_list_of_substitutions(topic)
+        self.__topic = topic if isinstance(topic, str) else '<unresolved>'
         self.__msg_type = msg_type
         self.__predicate = predicate
         self.__then = list(then)
@@ -115,6 +119,7 @@ class WaitForMessage(Action):
         loop = context.asyncio_loop
         if loop is None:  # only None before the launch service starts running
             raise RuntimeError('WaitForMessage executed outside a running launch')
+        self.__topic = perform_substitutions(context, self.__topic_subs)
         self.__future = loop.create_future()
 
         # Runs the `then` actions once our private event arrives.

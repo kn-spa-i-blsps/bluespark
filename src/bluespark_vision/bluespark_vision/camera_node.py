@@ -16,23 +16,27 @@ class UniversalCameraPublisher(Node):
         # frame_id : identifies which physical camera the frame came from
         #            (propagates through the detectors to the behaviour tree)
         # fps : publish rate; timer period is 1/fps
+        # stream_port : TCP port of the rpicam-vid stream (tcp mode only)
 
         self.declare_parameter("camera_mode", "auto")
         self.declare_parameter("camera_width", 640)
         self.declare_parameter("camera_height", 480)
         self.declare_parameter("frame_id", "camera_link")
         self.declare_parameter("fps", 30.0)
+        self.declare_parameter("stream_port", 5000)
 
         camera_mode = self.get_parameter("camera_mode").value
         camera_width = self.get_parameter("camera_width").value
         camera_height = self.get_parameter("camera_height").value
         self.frame_id = self.get_parameter("frame_id").value
         fps = self.get_parameter("fps").value
+        stream_port = self.get_parameter("stream_port").value
 
         self.camera = UniversalCamera(
             width=camera_width,
             height=camera_height,
             mode=camera_mode,
+            tcp_port=stream_port,
         )
 
         # Relative topic name: under a launch namespace like "down" this
