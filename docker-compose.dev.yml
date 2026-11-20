@@ -13,6 +13,14 @@ services:
     privileged: true
     stdin_open: true
     tty: true
+    # Run as your host user, not root: /workspace is a bind mount, so files
+    # created here as root (.git objects, build/, install/, log/) would be
+    # root-owned on the host and break `git commit` / `colcon build` there.
+    # UID/GID are not exported by bash, so this defaults to 1000 (the usual
+    # first user, = `ubuntu` in the image). Different on your machine? Put
+    # UID=... and GID=... (from `id -u` / `id -g`) in .env.
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add: [video, dialout]   # cameras + serial (Pixhawk) as non-root
 
     volumes:
       # Live-mount workspace for hot reloading code changes
@@ -48,6 +56,8 @@ services:
     privileged: true
     stdin_open: true
     tty: true
+    user: "${UID:-1000}:${GID:-1000}"   # host user, see bluespark_dev
+    group_add: [video, dialout]
     volumes:
       - .:/workspace
       - /dev:/dev
@@ -72,6 +82,8 @@ services:
     privileged: true
     stdin_open: true
     tty: true
+    user: "${UID:-1000}:${GID:-1000}"   # host user, see bluespark_dev
+    group_add: [video, dialout]
     volumes:
       - .:/workspace
       - /dev:/dev
