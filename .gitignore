@@ -31,3 +31,6 @@ env/
 *.log
 *.sqlite
 *.db
+
+# llm
+skills/*

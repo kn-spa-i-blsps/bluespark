@@ -37,6 +37,7 @@ or the supervising script decides when to arm, so the vehicle is never armed
 merely because the stack came up.
 """
 
+from bluespark_bringup.wait_for import READY_QOS, READY_TOPIC, WaitForMessage, ready_all
 from launch import LaunchDescription
 from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
 from launch.conditions import IfCondition
@@ -47,11 +48,9 @@ from launch_ros.substitutions import FindPackageShare
 from mavros_msgs.msg import State
 from std_msgs.msg import String
 
-from bluespark_bringup.wait_for import READY_QOS, READY_TOPIC, WaitForMessage, ready_all
-
 # How long to wait for each step before giving up (seconds).
-MAVROS_TIMEOUT = 30.0   # mavros started -> FCU connected
-STACK_TIMEOUT = 15.0    # control nodes started -> both announced ready
+MAVROS_TIMEOUT = 30.0  # mavros started -> FCU connected
+STACK_TIMEOUT = 15.0  # control nodes started -> both announced ready
 
 
 def generate_launch_description():
