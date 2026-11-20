@@ -120,9 +120,10 @@ It is in git at `520869f^` (`src/bluespark_peripherals/`, with a README). When i
       Then either start the stream on the host (document the service, keep `run_camera_tcp.sh`,
       remove `ExecuteProcess` from the launches) or install `rpicam-apps` in the image.
 - [ ] `governer.launch.py` docstring mentions the removed `benchTest`.
-- [ ] `package.xml`: "brain" -> "governer". `side.launch.py` docstring says "front camera".
-- [ ] Merge `front` / `side` / `down` into one `camera.launch.py` with parameters
-      (the three files are identical except for names).
+- [x] `package.xml`: "brain" -> "governer". `side.launch.py` docstring says "front camera".
+- [ ] The camera launch logic is now shared in `bluespark_bringup/camera_pi.py`; `front` / `side` /
+      `down.launch.py` only pass the namespace, frame_id and detectors. Optionally merge them into one
+      `camera.launch.py` with a `role` argument if three thin files become a hassle.
 - [ ] Add a README (roles, launch arguments, examples).
 - [ ] Later: bring back down-camera detectors (pipeline, path marker, bin). Old code is in git at
       `7a859a7^` (`src/bluespark_vision/bluespark_vision/detectors/` and `*_node.py`); they publish

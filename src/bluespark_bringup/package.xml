@@ -3,7 +3,7 @@
 <package format="3">
     <name>bluespark_bringup</name>
     <version>0.0.0</version>
-    <description>Launch files that bring up the BlueSpark system per Raspberry Pi role (front / down / side / brain).</description>
+    <description>Launch files that bring up the BlueSpark system per Raspberry Pi role (front / down / side / governer).</description>
     <maintainer email="jappa414@gmail.com">jappa</maintainer>
     <license>TODO: License declaration</license>
 
