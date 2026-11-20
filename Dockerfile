@@ -51,10 +51,17 @@ RUN pip3 install --no-cache-dir -r /tmp/requirements.txt
 
 WORKDIR /workspace
 
-RUN echo "source /opt/ros/jazzy/setup.bash" >> /root/.bashrc && \
-    echo "alias cb='colcon build --symlink-install --parallel-workers 2'" >> /root/.bashrc && \
-    echo "if [ -f /workspace/install/setup.bash ]; then source /workspace/install/setup.bash; fi" >> /root/.bashrc
+# Shell setup in /etc/bash.bashrc (not /root/.bashrc) so it applies to every
+# user: root in the prod/compose containers and `ubuntu` in the Dev Container.
+RUN echo "source /opt/ros/jazzy/setup.bash" >> /etc/bash.bashrc && \
+    echo "alias cb='colcon build --symlink-install --parallel-workers 2'" >> /etc/bash.bashrc && \
+    echo "if [ -f /workspace/install/setup.bash ]; then source /workspace/install/setup.bash; fi" >> /etc/bash.bashrc
 
-RUN git config --global --add safe.directory '*'
+RUN git config --system --add safe.directory '*'
+
+# The Dev Container runs as the image's `ubuntu` user (UID 1000, like the usual
+# host user) so files it creates in the /workspace bind mount (.git, build/, ...)
+# are not owned by root on the host. Give it camera + serial (Pixhawk) access.
+RUN usermod -aG video,dialout ubuntu
 
 CMD ["bash"]

@@ -26,11 +26,20 @@
   // After changing .msg/.srv files run `cb` (alias from the Dockerfile) again.
   "postCreateCommand": "bash -c 'source /opt/ros/jazzy/setup.bash && colcon build --symlink-install --parallel-workers 2'",
 
-  "remoteUser": "root",
+  // Run the editor, its terminals and the commands above as a normal user, not
+  // root. /workspace is a bind mount, so anything root creates there (git
+  // objects from a commit, build/, install/) is root-owned on the host too and
+  // breaks `git commit` / `colcon build` there afterwards.
+  // `ubuntu` (UID 1000) comes with the ros:jazzy image; updateRemoteUserUID
+  // changes its UID/GID to match the host user if that isn't 1000 (VS Code and
+  // the devcontainer CLI; Zed may ignore it, which is fine for UID 1000).
+  // The container's main process still runs as root.
+  "remoteUser": "ubuntu",
+  "updateRemoteUserUID": true,
 
   // Make ROS Python packages visible to every tool the editor starts in the
   // container (language servers, test runners, JetBrains interpreter
-  // introspection), not only to shells that source /root/.bashrc.
+  // introspection), not only to interactive shells (which source /etc/bash.bashrc).
   // Mirrors what `source /opt/ros/jazzy/setup.bash` + install/setup.bash add.
   "remoteEnv": {
     "PYTHONPATH": "/workspace/install/bluespark_interfaces/lib/python3.12/site-packages:/opt/ros/jazzy/lib/python3.12/site-packages"
