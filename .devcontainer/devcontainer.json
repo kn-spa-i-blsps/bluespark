@@ -1,0 +1,55 @@
+// Dev Container: open the repo in the editor from INSIDE the bluespark_dev
+// container, so the language server sees ROS 2 Jazzy, mavros, py_trees, pip
+// packages and the built bluespark_interfaces exactly like the robot code does.
+// Works in VS Code (Dev Containers extension), JetBrains (PyCharm / Gateway)
+// and Zed, plus the `devcontainer` CLI.
+{
+  "name": "BlueSpark (ROS 2 Jazzy)",
+
+  // Reuse the existing dev setup (same image, /workspace mount, host network,
+  // /dev access, ROS_DOMAIN_ID, X11). The second file only renames the
+  // container so it doesn't clash with a manually started bluespark_dev.
+  "dockerComposeFile": [
+    "../docker-compose.dev.yml",
+    "docker-compose.devcontainer.yml"
+  ],
+  "service": "bluespark_dev",
+  "runServices": ["bluespark_dev"], // not the front / governer test services
+  "workspaceFolder": "/workspace",
+
+  // Keep the container alive for the editor instead of running the compose
+  // `command` (which builds and then waits on an interactive bash).
+  "overrideCommand": true,
+
+  // Build once when the container is created, so generated message/service
+  // classes (bluespark_interfaces) exist for the language server.
+  // After changing .msg/.srv files run `cb` (alias from the Dockerfile) again.
+  "postCreateCommand": "bash -c 'source /opt/ros/jazzy/setup.bash && colcon build --symlink-install --parallel-workers 2'",
+
+  "remoteUser": "root",
+
+  // Make ROS Python packages visible to every tool the editor starts in the
+  // container (language servers, test runners, JetBrains interpreter
+  // introspection), not only to shells that source /root/.bashrc.
+  // Mirrors what `source /opt/ros/jazzy/setup.bash` + install/setup.bash add.
+  "remoteEnv": {
+    "PYTHONPATH": "/workspace/install/bluespark_interfaces/lib/python3.12/site-packages:/opt/ros/jazzy/lib/python3.12/site-packages"
+  },
+
+  // Editor-specific bits; each editor ignores the others' sections.
+  "customizations": {
+    "vscode": {
+      "extensions": [
+        "ms-python.python",
+        "ms-python.vscode-pylance"
+      ],
+      "settings": {
+        // ros:jazzy has only `python3`, no `python`.
+        "python.defaultInterpreterPath": "/usr/bin/python3"
+      }
+    },
+    "jetbrains": {
+      "backend": "PyCharm"
+    }
+  }
+}
