@@ -1,4 +1,5 @@
 import py_trees
+from rclpy.qos import qos_profile_sensor_data
 from bluespark_interfaces.msg import DetectedObjectArray
 from mavros_msgs.msg import State, OverrideRCIn, VfrHud
 from sensor_msgs.msg import FluidPressure
@@ -73,10 +74,10 @@ class BlackboardManager:
 
         self.depth_sub = self.node.create_subscription(
             FluidPressure,
-            'mavros/imu/static_pressure',
+            '/mavros/imu/static_pressure',
             self._depth_callback,
-            10
-        ) 
+            qos_profile_sensor_data
+        )
 
         ### ControlBlackboard
         self.control_bb = py_trees.blackboard.Client(name="ControlManager", namespace="control")
