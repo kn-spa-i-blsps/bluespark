@@ -75,8 +75,13 @@ class RCOverrideNode(Node):
             SetRCOverride, "control/set_sway", self.cb_sway
         )
 
-        # All services exist -> tell the launch we are ready.
+        # All services exist -> tell the launch we are ready. Repeated every
+        # second: a single latched message was sometimes lost (see wait_for.py).
         self.ready_pub = self.create_publisher(String, READY_TOPIC, READY_QOS)
+        self.announce_ready()
+        self.ready_timer = self.create_timer(1.0, self.announce_ready)
+
+    def announce_ready(self):
         self.ready_pub.publish(String(data="rc_override"))
 
     def publish_rc_state(self):

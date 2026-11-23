@@ -194,8 +194,11 @@ def main(args=None):
     executor.add_node(state_listener_node)
 
     # All three nodes and their services exist -> tell the launch we are ready.
+    # Repeated every second: a single latched message was sometimes lost
+    # (see bluespark_bringup/wait_for.py).
     ready_pub = arming_node.create_publisher(String, READY_TOPIC, READY_QOS)
     ready_pub.publish(String(data="manager"))
+    arming_node.create_timer(1.0, lambda: ready_pub.publish(String(data="manager")))
 
     def handle_sigterm(signum, frame):
         raise KeyboardInterrupt()

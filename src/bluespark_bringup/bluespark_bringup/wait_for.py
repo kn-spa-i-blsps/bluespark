@@ -23,9 +23,12 @@ How it works:
 
 Readiness convention for our own nodes:
   A node that others depend on publishes its name (std_msgs/String) on
-  READY_TOPIC with READY_QOS once it is ready (e.g. after creating its services).
-  READY_QOS is transient_local, so a launch that subscribes later still gets
-  every publisher's last "ready" message. Use ready_all({...}) as the predicate.
+  READY_TOPIC with READY_QOS once it is ready (e.g. after creating its services)
+  and then REPEATS it every second while it runs. READY_QOS is transient_local,
+  so a launch that subscribes later should get every publisher's last message,
+  but in testing a single latched message was lost in about 1 of 7 starts (the
+  node was up, the launch timed out). The repeat makes that harmless.
+  Use ready_all({...}) as the predicate.
 """
 
 import asyncio
