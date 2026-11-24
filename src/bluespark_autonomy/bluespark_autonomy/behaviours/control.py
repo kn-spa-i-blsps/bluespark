@@ -1,3 +1,5 @@
+import time
+
 import py_trees
 from mavros_msgs.srv import CommandBool, SetMode
 
@@ -133,5 +135,41 @@ class SetFlightMode(py_trees.behaviour.Behaviour):
 
         return py_trees.common.Status.RUNNING
 
-        
 
+class WaitForMode(py_trees.behaviour.Behaviour):
+    """
+    Purpose:
+        Confirms that the Pixhawk is REALLY in the given flight mode (read from
+        /mavros/state via the blackboard). SetFlightMode only knows that the
+        request was sent; the Pixhawk may still refuse it, e.g. ALT_HOLD without
+        a working depth sensor.
+
+    Usage:
+        Put right after SetFlightMode. FAILURE after timeout_sec, so the mission
+        stops there instead of moving in the wrong mode.
+        Example:
+            WaitForMode(name="Confirm ALT_HOLD", mode="ALT_HOLD", timeout_sec=5.0)
+    """
+
+    def __init__(self, name, mode, timeout_sec=5.0):
+        super().__init__(name)
+        self.mode = mode
+        self.timeout_sec = timeout_sec
+        self.state_bb = self.attach_blackboard_client(name=self.name, namespace="state")
+        self.state_bb.register_key(key="flight_mode", access=py_trees.common.Access.READ)
+        self.start_time = None
+
+    def initialise(self):
+        self.start_time = time.monotonic()
+
+    def update(self):
+        current = self.state_bb.flight_mode if self.state_bb.exists("flight_mode") else "?"
+        if current == self.mode:
+            self.feedback_message = f"Pixhawk in {self.mode}"
+            return py_trees.common.Status.SUCCESS
+        if time.monotonic() - self.start_time >= self.timeout_sec:
+            self.feedback_message = (
+                f"Pixhawk still in {current} after {self.timeout_sec:g} s, not {self.mode}"
+            )
+            return py_trees.common.Status.FAILURE
+        return py_trees.common.Status.RUNNING

@@ -26,7 +26,10 @@ setup(
     entry_points={
         'console_scripts': [
             'autonomy_node = bluespark_autonomy.autonomy_node:main',
-            'approacherTest = bluespark_autonomy.missions.approacherTest:main',
+            # Test missions (one run each, ./bs mission <name>)
+            'forwardTurnBack = bluespark_autonomy.missions.forwardTurnBack:main',
+            'circleFacingCenter = bluespark_autonomy.missions.circleFacingCenter:main',
+            'circleForward = bluespark_autonomy.missions.circleForward:main',
         ],
     },
 )

@@ -37,6 +37,7 @@ class MoveRC(py_trees.behaviour.Behaviour):
 
         self.clients = {}
         self.start_time = None
+        self.unavailable = []
 
     def setup(self, **kwargs):
         try:
@@ -52,7 +53,9 @@ class MoveRC(py_trees.behaviour.Behaviour):
             self.logger.error("ROS 2 node reference missing in setup()!")
 
     def _send_commands(self, values_dict):
-        """Helper method to send asynchronous requests to all axes."""
+        """Helper method to send asynchronous requests to all axes.
+        Returns the axes whose service was unavailable (command NOT sent)."""
+        unavailable = []
         for axis, pwm in values_dict.items():
             if self.clients[axis].service_is_ready():
                 req = SetRCOverride.Request()
@@ -60,16 +63,22 @@ class MoveRC(py_trees.behaviour.Behaviour):
                 self.clients[axis].call_async(req)
             else:
                 self.logger.warning(f"[{self.name}] Service for {axis} is unavailable!")
+                unavailable.append(axis)
+        return unavailable
 
     def initialise(self):
         self.logger.info(f"[{self.name}] Starting movement for {self.duration_sec}s")
         self.logger.debug(f"[{self.name}] Commands: {self.cmd_values}")
 
         # Send targeted movement commands and start the timer
-        self._send_commands(self.cmd_values)
+        self.unavailable = self._send_commands(self.cmd_values)
         self.start_time = time.time()
 
     def update(self):
+        # A command that could not be sent = the movement is not happening: fail.
+        if self.unavailable:
+            self.feedback_message = f"control service unavailable: {', '.join(self.unavailable)}"
+            return py_trees.common.Status.FAILURE
         # Check if the requested time has elapsed
         if time.time() - self.start_time >= self.duration_sec:
             self.logger.info(f"[{self.name}] Movement completed.")

@@ -5,11 +5,12 @@ Started by governer.launch.py when log_dir:=<dir> is given (./bs start does
 that), before anything else, so it also catches mavros starting up. Writes
 <log_dir>/timeline.log, one line per event, from all processes together:
 
-    21:14:05.120  =====  START mission 01 approacherTest (git 7fa3749)  =====
-    21:14:05.420  STATE  mode MANUAL -> ALT_HOLD
-    21:14:05.900  STATE  ARMED
-    21:14:06.010  RC     yaw 1500 -> 1550
-    21:14:09.000  =====  END mission 01 approacherTest: INTERRUPTED (Ctrl+C) (3.9 s)  =====
+    01:31:10.330  =====  START mission 01 forwardTurnBack (git 4e95764)  =====
+    01:31:15.754  STATE  mode MANUAL -> ALT_HOLD
+    01:31:16.753  STATE  ARMED
+    01:31:17.527  INFO   [forward_turn_back_node] [tree] Swim Forward: RUNNING -> SUCCESS
+    01:31:18.151  RC     yaw 1500 -> 1600
+    01:31:22.877  =====  END mission 01 forwardTurnBack: OK (12.5 s)  =====
 
 Sources:
   /rosout              every log line of every node (get_logger().info(...) etc.),
@@ -55,8 +56,9 @@ QUIET_NODES = ("rosbag2_recorder", "rosbag2_cpp")
 LEVELS = {10: "DEBUG", 20: "INFO", 30: "WARN", 40: "ERROR", 50: "FATAL"}
 
 
-def fmt_time():
-    return datetime.now().strftime("%H:%M:%S.%f")[:-3]
+def fmt_time(stamp_sec=None):
+    t = datetime.now() if stamp_sec is None else datetime.fromtimestamp(stamp_sec)
+    return t.strftime("%H:%M:%S.%f")[:-3]
 
 
 class TimelineRecorder(Node):
@@ -93,8 +95,8 @@ class TimelineRecorder(Node):
         self.get_logger().info(f"Writing the session timeline to {path}")
 
     # --- output ---
-    def write(self, kind, text):
-        self.file.write(f"{fmt_time()}  {kind:<6} {text}\n")
+    def write(self, kind, text, stamp_sec=None):
+        self.file.write(f"{fmt_time(stamp_sec)}  {kind:<6} {text}\n")
 
     def write_marker(self, text):
         self.write("=====", f"{text}  =====")
@@ -107,10 +109,13 @@ class TimelineRecorder(Node):
             return
         if msg.name in QUIET_NODES and msg.level < 30:
             return
-        # Time of arrival, not msg.stamp: lines from different processes then
-        # stay in order in the file (the difference is milliseconds).
+        # The time the line was logged (msg.stamp), not when it arrived here:
+        # the first lines of a new process arrive up to a few seconds late
+        # (discovery). Lines are written in arrival order, so around a process
+        # start a line can appear a little after a later one.
+        stamp = msg.stamp.sec + msg.stamp.nanosec * 1e-9
         level = LEVELS.get(msg.level, str(msg.level))
-        self.write(level, f"[{msg.name}] {msg.msg}")
+        self.write(level, f"[{msg.name}] {msg.msg}", stamp)
 
     def on_state(self, msg):
         old = self.state

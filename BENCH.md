@@ -82,26 +82,26 @@ Gentler or longer: `./bs test --step 50 --seconds 3`.
 
 ### 3. Work
 
-Run a mission:
+Run a mission (see [Test missions](#test-missions)):
 
 ```bash
-./bs missions                 # what is there
-./bs mission approacherTest   # runs it; Ctrl+C stops it safely
+./bs missions                  # what is there
+./bs mission forwardTurnBack   # runs it once; Ctrl+C stops it safely
 ```
 
 When it ends you get a summary:
 
 ```
 ============================================================
- approacherTest: INTERRUPTED (Ctrl+C)   (4.6 s)
+ forwardTurnBack: OK   (12.5 s)
  safety stop: OK: disarmed; thrusters neutral (1500)
- logs: logs/2026-11-24_01-11-16/01_01-12-25_approacherTest/
+ logs: logs/2026-11-24_01-30-54/01_01-31-07_forwardTurnBack/
 ============================================================
 ```
 
-Some missions never end by themselves (they start over when they finish):
-stop them with **Ctrl+C**. Ctrl+C twice = kill the mission immediately. The safety
-stop runs in both cases.
+A mission runs **once** and ends. If any step fails, it stops right there and
+the result says `FAILED`. Ctrl+C stops it; Ctrl+C twice kills it immediately.
+In every case the vehicle is disarmed and the thrusters set to 1500 at the end.
 
 Or control it by hand:
 
@@ -133,13 +133,44 @@ Session logs: logs/2026-11-24_01-11-16/
 
 ---
 
+## Test missions
+
+All three use the **Pixhawk's own depth hold (ALT_HOLD)**: they switch to ALT_HOLD,
+check that the Pixhawk really is in ALT_HOLD (if not, e.g. no depth sensor, the
+mission fails before the thrusters move), arm, move, stop, disarm.
+
+| Mission | What it does | Parameters (default) |
+| :-- | :-- | :-- |
+| `forwardTurnBack` | Forward, stop, turn 180°, stop, forward back to the start | `surge_pwm` (1600), `forward_sec` (5.0), `yaw_pwm` (1600), `turn_sec` (4.0), `pause_sec` (2.0) |
+| `circleFacingCenter` | One circle **sideways**, the front always facing the center | `sway_pwm` (1600), `yaw_pwm` (1400), `circle_sec` (20.0) |
+| `circleForward` | One circle **front first** (facing where it goes) | `surge_pwm` (1600), `yaw_pwm` (1600), `circle_sec` (20.0) |
+
+Moves are **time-based** (a fixed PWM for a fixed time), so they need tuning at
+the pool. Change a parameter without touching the code:
+
+```bash
+./bs mission forwardTurnBack --ros-args -p turn_sec:=3.5            # turned too far
+./bs mission circleForward --ros-args -p circle_sec:=25.0           # circle not closed
+./bs mission forwardTurnBack --ros-args -p forward_sec:=3.0 -p pause_sec:=1.0
+```
+
+The values used are written at the top of the mission's log (`Parameters: ...`)
+and in `info.txt` (`command`).
+
+Which way 1600 turns or moves the vehicle is **not confirmed yet**. If it goes the
+wrong way, use the other side of 1500 (1400 instead of 1600). For
+`circleFacingCenter`, `sway_pwm` and `yaw_pwm` must be on opposite sides of 1500;
+if the front drifts away from the center, swap `yaw_pwm` to the other side.
+
+---
+
 ## All commands
 
 | Command | What it does |
 | :-- | :-- |
 | `./bs start` | Start the stack (no mission). Shows each step, waits until ready. |
 | `./bs test` | Check the whole chain step by step. **Thrusters spin.** Options: `--step 50`, `--seconds 3` |
-| `./bs mission <name>` | Run a mission with full logs. Ctrl+C = stop it safely. |
+| `./bs mission <name>` | Run a mission once, with full logs. Ctrl+C = stop it safely. Parameters: `--ros-args -p name:=value` |
 | `./bs stop` | Disarm and stop everything. |
 | `./bs disarm` | **Emergency**: disarm + all thrusters 1500. |
 | `./bs status` | Pixhawk connected? Armed? Mode, thrusters, battery, nodes, last events. |
@@ -165,7 +196,7 @@ Everything from `./bs start` to `./bs stop` is one **session**, in `logs/`:
 logs/2026-11-24_01-11-16/
 ├── session_info.txt                  when, which Pi, which git commit, changed files
 ├── timeline.log                      everything that happened, in order
-└── 01_01-12-25_approacherTest/       one folder per mission run
+└── 01_01-31-07_forwardTurnBack/      one folder per mission run
     ├── info.txt                      result, times, safety stop, git commit
     ├── console.log                   everything the mission printed
     ├── bag/                          recording of all topics (no camera images)
@@ -186,9 +217,22 @@ The most useful file. Every line is one event, from all programs together:
 01:11:52.562  STATE  mode MANUAL -> ALT_HOLD
 01:11:54.637  STATE  DISARMED
 01:11:54.638  =====  END bench test: 12/12 OK  =====
-01:12:27.790  =====  START mission 01 approacherTest (git 7fa3749)  =====
-01:12:30.333  RC     yaw 1500 -> 1550
-01:12:32.743  =====  END mission 01 approacherTest: INTERRUPTED (Ctrl+C) (4.6 s)  =====
+01:31:10.330  =====  START mission 01 forwardTurnBack (git 4e95764)  =====
+01:31:10.746  INFO   [forward_turn_back_node] Parameters: surge_pwm=1600, forward_sec=1.5, ...
+01:31:15.754  STATE  mode MANUAL -> ALT_HOLD
+01:31:15.825  INFO   [forward_turn_back_node] [tree] Confirm ALT_HOLD: RUNNING -> SUCCESS (Pixhawk in ALT_HOLD)
+01:31:16.753  STATE  ARMED
+01:31:17.527  INFO   [forward_turn_back_node] [tree] Swim Forward: RUNNING -> SUCCESS
+01:31:18.151  RC     yaw 1500 -> 1600
+01:31:19.226  INFO   [forward_turn_back_node] [tree] Turn 180: RUNNING -> SUCCESS
+01:31:22.869  STATE  DISARMED
+01:31:22.877  =====  END mission 01 forwardTurnBack: OK (12.5 s)  =====
+```
+
+When a mission fails, the line with `FAILURE` says which step and why:
+
+```
+01:30:29.384  ERROR  [forward_turn_back_node] [tree] Confirm ALT_HOLD: RUNNING -> FAILURE (Pixhawk still in MANUAL after 5 s, not ALT_HOLD)
 ```
 
 | Kind | Meaning |
@@ -196,7 +240,7 @@ The most useful file. Every line is one event, from all programs together:
 | `=====` | Start / end of the session, a test or a mission |
 | `STATE` | Pixhawk: connected / disconnected, armed / disarmed, mode |
 | `RC` | Thruster commands per axis (only changes). `released` = no command |
-| `INFO` `WARN` `ERROR` | A message of a program, `[name]` = which one. Messages from the Pixhawk itself (e.g. why it refused to arm) appear here too, from `mavros` |
+| `INFO` `WARN` `ERROR` | A message of a program, `[name]` = which one. `[tree]` lines = mission steps. Messages from the Pixhawk itself (e.g. why it refused to arm) appear here too, from `mavros` |
 
 Follow it live in a second terminal: `./bs logs -f`.
 
@@ -204,10 +248,12 @@ Follow it live in a second terminal: `./bs logs -f`.
 
 | Result | Meaning |
 | :-- | :-- |
-| `OK` | The mission finished by itself without errors |
+| `OK` | All steps done |
+| `FAILED: a step of the mission failed` | A step failed, the mission stopped there. Which one and why: the `FAILURE` line in `timeline.log` |
+| `FAILED: setup (services missing)` | The mission could not start: a part of the stack is not running. `./bs status`, `./bs restart` |
+| `FAILED (exit code N, see console.log)` | The mission program crashed: the error is in `console.log` |
 | `INTERRUPTED (Ctrl+C)` | Stopped with Ctrl+C |
-| `FAILED (exit code N, see console.log)` | The mission ended with an error: look at `console.log` |
-| `KILLED` | The mission was killed (e.g. Ctrl+C twice) |
+| `KILLED` | Killed (e.g. Ctrl+C twice) |
 
 `safe_stop` in `info.txt` says whether the disarm at the end was confirmed.
 
@@ -231,10 +277,11 @@ The `bag/` folder opens in PlotJuggler or Foxglove (`.mcap` file), or replays wi
 | `The stack is not running` | `./bs start` |
 | `Already running` after `./bs start` | Fine, it is already up. To start fresh: `./bs restart`. |
 | Test step `Arm` FAIL | The Pixhawk refused. The reason is in the log: `./bs logs -f` or `timeline.log` (lines from `mavros`, e.g. PreArm ...). |
-| Test step `Mode ALT_HOLD` FAIL | ALT_HOLD needs a working depth sensor. Check it in the Pixhawk / QGroundControl. |
+| Test step `Mode ALT_HOLD` FAIL, or a mission fails at `Confirm ALT_HOLD` | The Pixhawk refuses ALT_HOLD: it needs a working depth sensor. Check it in QGroundControl. |
+| The vehicle turns / moves the wrong way in a mission | Use the other side of 1500 for that parameter, see [Test missions](#test-missions). |
 | `... NOT seen on /mavros/rc/override` | The thruster commands do not reach the Pixhawk: `./bs status`, then `./bs restart`. |
 | `Stack nodes running` FAIL | A program of the stack died: `./bs restart`. |
-| A mission does not end | Ctrl+C. Again Ctrl+C if it does not stop. |
+| A mission must be stopped now | Ctrl+C. Again Ctrl+C if it does not stop. Then check `./bs status`. |
 | Thrusters keep spinning after something went wrong | `./bs disarm`. If that fails: kill switch. |
 | `permission denied` from docker | Your user is not in the `docker` group: `sudo usermod -aG docker $USER`, log out and in. |
 | Cannot delete files in `logs/` | Some are created by the container: `sudo rm -rf logs/<session>`. |
@@ -253,7 +300,7 @@ ros2 topic echo /mavros/state --once
 ros2 service call /mavros/cmd/arming mavros_msgs/srv/CommandBool "{value: false}"   # disarm
 ros2 service call /control/set_surge bluespark_interfaces/srv/SetRCOverride "{pwm_value: 1600}"
 ros2 run bluespark_bringup vehicle status        # the same tools ./bs uses
-ros2 run bluespark_bringup mission_runner approacherTest
+ros2 run bluespark_bringup mission_runner forwardTurnBack
 ```
 
 Without `./bs` at all: `docker compose -f docker-compose.bench.yml up -d` /

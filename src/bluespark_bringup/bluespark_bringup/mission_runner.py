@@ -24,10 +24,8 @@ Ctrl+C again: kills the mission immediately, then safety stop.
 Closing the terminal / SSH dropping counts as Ctrl+C.
 
 Result (info.txt, exit code of this command = exit code of the mission):
-  OK (exit code 0), INTERRUPTED (Ctrl+C), KILLED (by a signal),
-  FAILED (any other exit code, see console.log).
-Note: a mission that keeps ticking its tree after it finished never exits by
-itself; stop it with Ctrl+C (the safety stop still runs).
+  OK (0), FAILED: setup (2), FAILED: a step of the mission failed (3),
+  INTERRUPTED (Ctrl+C), KILLED (by a signal), FAILED (other exit codes = crash).
 """
 
 import os
@@ -52,7 +50,11 @@ WORKSPACE = "/workspace"
 LOGS_ROOT = os.environ.get("BS_LOGS_ROOT", os.path.join(WORKSPACE, "logs"))
 IMAGE_TYPES = ["sensor_msgs/msg/Image", "sensor_msgs/msg/CompressedImage"]
 ANSI = re.compile(r"\x1b\[[0-9;]*[A-Za-z]")
-RESULTS = {0: "OK"}
+RESULTS = {  # exit codes of bluespark_autonomy.mission_runtime
+    0: "OK",
+    2: "FAILED: setup (services missing, see console.log)",
+    3: "FAILED: a step of the mission failed (see timeline.log / console.log)",
+}
 
 
 def now_str():
@@ -204,7 +206,10 @@ class MissionRunner:
         vehicle = Vehicle(node)
         self.timeline = node.create_publisher(String, TIMELINE_TOPIC, TIMELINE_QOS)
         try:
-            state = vehicle.wait_state(3.0)
+            # A fresh process needs a moment to discover the stack: wait up to 8 s.
+            vehicle.spin_until(
+                lambda: vehicle.state is not None and vehicle.state.connected, 8.0)
+            state = vehicle.state
             if state is None or not state.connected:
                 out("The stack is not running or the Pixhawk is not connected.")
                 out("Start it with ./bs start, check with ./bs status.")
