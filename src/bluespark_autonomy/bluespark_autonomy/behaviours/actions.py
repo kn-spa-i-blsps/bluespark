@@ -202,22 +202,22 @@ class DepthControl(BaseRCBehaviour):
         self.DEADBAND_DEPTH = 0.15
 
     def initialise(self):
-        pass
+        self.axis_controller.reset("depth")
 
     def update(self):
         if not self.depth_bb.exists("current_depth"):
             return py_trees.common.Status.RUNNING
 
-        depth_error = self.target_depth - self.depth_bb.current_depth
+        current_depth = self.depth_bb.current_depth
+        depth_error = self.target_depth - current_depth
 
         if abs(depth_error) < self.DEADBAND_DEPTH:
             self._send_single_pwm("heave", self.axis_controller.STOP_PWM)
             return py_trees.common.Status.SUCCESS
-        else:
-            heave_pwm = self.axis_controller.update("heave", depth_error)
-            # FIXME: czy tutaj dobrze ze dajemy depth error w netrach gdzie dla kamery jest w stopniach aka czy tego nie meiszamy
-            self._send_single_pwm("heave", heave_pwm)
-            return py_trees.common.Status.RUNNING
+
+        heave_pwm = self.axis_controller.update("depth", depth_error)
+        self._send_single_pwm("heave", heave_pwm)
+        return py_trees.common.Status.RUNNING
 
     def terminate(self, new_status):
         super().terminate(new_status)
