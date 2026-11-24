@@ -27,6 +27,9 @@ env/
 *.sublime-project
 *.sublime-workspace
 
+# session logs from ./bs (timeline, mission runs, bags)
+logs/
+
 # log files
 *.log
 *.sqlite

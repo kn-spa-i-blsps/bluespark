@@ -1,6 +1,8 @@
 # =============================================================================
 # docker-compose.bench.yml  —  BENCH TESTING on the governer Pi
 #
+# EASIEST: use ./bs (see BENCH.md). It runs this file and adds session logs.
+#
 # Brings up the FULL flight-control stack (mavros + rc_override + vehicle_manager)
 # but NO mission — so you can run bench tests by hand without hand-starting
 # mavros every time.
@@ -42,10 +44,13 @@ services:
     volumes:
       - .:/workspace # live-mounted code; git pull + restart, no rebuild
       - /dev:/dev # serial (Pixhawk), I2C, etc.
+      - /etc/localtime:/etc/localtime:ro # Pi's time zone -> log timestamps match the Pi
 
     environment:
       - ROS_DOMAIN_ID=42 # MUST match every other Pi
       - ROS_LOCALHOST_ONLY=0
+      # Session log folder, set by ./bs start. Empty when started by hand -> no timeline.log.
+      - BS_SESSION_DIR=${BS_SESSION_DIR:-}
 
     # Build (offline-safe) then bring up ONLY the stack, no mission.
     #   - NO `pip install` here: everything is already in the image, so this
@@ -56,9 +61,12 @@ services:
         source /opt/ros/jazzy/setup.bash &&
         colcon build --symlink-install --parallel-workers 2 &&
         source /workspace/install/setup.bash &&
-        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false
+        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false log_dir:=$${BS_SESSION_DIR}
       '
 
+    # ros2 launch shuts its nodes down cleanly on SIGINT; on docker's default
+    # SIGTERM it may leave them to be killed hard (no SESSION END in the log).
+    stop_signal: SIGINT
     stop_grace_period: 20s
 
     # Bench: do NOT auto-restart. If the stack dies you want to see why, not have

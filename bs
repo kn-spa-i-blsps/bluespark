@@ -1,0 +1,284 @@
+#!/usr/bin/env bash
+# =============================================================================
+# bs — BlueSpark bench control. Run on the governer Pi, from the repo folder:
+#
+#   ./bs start                 start the stack (no mission), wait until ready
+#   ./bs mission <name>        run a mission with full logs; Ctrl+C = stop it safely
+#   ./bs stop                  disarm and stop everything
+#   ./bs disarm                EMERGENCY: disarm + all thrusters 1500
+#   ./bs status                Pixhawk / armed / mode / thrusters / nodes
+#   ./bs test                  check the whole chain step by step (thrusters spin)
+#
+#   ./bs help                  everything else (arm, althold, pwm, logs, shell, ...)
+#   User guide: BENCH.md
+#
+# Logs: logs/<session>/ (one session = from ./bs start to ./bs stop)
+#   timeline.log               everything, in order, from all nodes
+#   NN_HH-MM-SS_<mission>/     one folder per mission run (info.txt, console.log, bag/)
+#
+# This script only calls docker compose / docker exec. The logic lives in
+# src/bluespark_bringup (mission_runner, vehicle, timeline_recorder, launch files).
+# =============================================================================
+set -uo pipefail
+
+REPO="$(cd "$(dirname "$(realpath "$0")")" && pwd)"
+cd "$REPO" || exit 1
+
+COMPOSE=(docker compose -f docker-compose.bench.yml)
+CONTAINER=bluespark_bench
+LOGS=logs
+CURRENT="$LOGS/.current"   # path of the running session, e.g. logs/2026-11-23_21-10-00
+START_TIMEOUT=600          # s: colcon build + Pixhawk + control nodes
+
+if [ -t 1 ]; then
+    BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; YELLOW=$'\e[33m'; RESET=$'\e[0m'
+else
+    BOLD=; GREEN=; RED=; YELLOW=; RESET=
+fi
+ok()   { echo "${GREEN}[ OK ]${RESET} $*"; }
+fail() { echo "${RED}[FAIL]${RESET} $*"; }
+warn() { echo "${YELLOW}[WARN]${RESET} $*"; }
+say()  { echo "${BOLD}$*${RESET}"; }
+
+running() { [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ]; }
+session() { [ -f "$CURRENT" ] && cat "$CURRENT"; }
+need_running() {
+    running && return 0
+    fail "The stack is not running. Start it with: ./bs start"
+    exit 1
+}
+
+# Run a command inside the container with ROS sourced.
+in_ros() {
+    local opts=()
+    [ -t 0 ] && [ -t 1 ] && opts+=(-it)
+    local s; s="$(session)"
+    [ -n "$s" ] && opts+=(-e "BS_SESSION_DIR=/workspace/$s")
+    docker exec "${opts[@]}" "$CONTAINER" bash -c \
+        'source /opt/ros/jazzy/setup.bash && source /workspace/install/setup.bash && exec "$@"' _ "$@"
+}
+
+# Run a bluespark_bringup program (vehicle, mission_runner) inside the container.
+# Same as `ros2 run bluespark_bringup <exe>`, without the extra
+# "[ros2run]: Process exited with failure" line and without a wrapper process.
+bringup() {
+    in_ros bash -c 'exec "$(ros2 pkg prefix bluespark_bringup)/lib/bluespark_bringup/$0" "$@"' "$@"
+}
+
+# ----------------------------------------------------------------------------
+cmd_start() {
+    if running; then
+        ok "Already running. Session: $(session)/"
+        return 0
+    fi
+    mkdir -p "$LOGS"
+    local s; s="$LOGS/$(date +%Y-%m-%d_%H-%M-%S)"
+    mkdir -p "$s" && echo "$s" > "$CURRENT"
+    {
+        echo "started   $(date '+%Y-%m-%d %H:%M:%S')"
+        echo "host      $(hostname)"
+        echo "git       $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
+        git status --porcelain 2>/dev/null | sed 's/^/changed  /'
+    } > "$s/session_info.txt"
+
+    say "Starting the stack. Session logs: $s/"
+    BS_SESSION_DIR="/workspace/$s" "${COMPOSE[@]}" up -d >/dev/null || {
+        fail "docker compose up failed (see the error above)"
+        return 1
+    }
+    follow_start
+}
+
+# Watch the container log until the stack is ready or failed; print the steps.
+follow_start() {
+    local since; since="$(docker inspect -f '{{.State.StartedAt}}' "$CONTAINER")"
+    local t0=$SECONDS
+    shown="" log=""
+    step() {  # step <id> <pattern> <message>: print the message once, when the pattern shows up
+        if [[ "$shown" != *"<$1>"* ]] && grep -q "$2" <<<"$log"; then
+            ok "$3"; shown+="<$1>"
+        fi
+    }
+    say "Building the workspace (colcon)..."
+    while :; do
+        log="$(docker logs --since "$since" "$CONTAINER" 2>&1)"
+        step build  "^Summary: .* finished"        "Workspace built"
+        step wait   "Waiting for /mavros/state"     "mavros started, waiting for the Pixhawk..."
+        step fcu    "Got /mavros/state"             "Pixhawk connected"
+        if grep -q "Got /bluespark/ready" <<<"$log"; then
+            ok "Control nodes ready"
+            echo
+            say "READY.  Next: ./bs test   or   ./bs mission <name>   (./bs missions lists them)"
+            say "        Manual: ./bs arm | ./bs althold | ./bs pwm surge 1600 | ./bs disarm"
+            return 0
+        fi
+        if grep -qE "Failed +<<<|Aborted +<<<" <<<"$log"; then
+            fail "The code does not build:"
+            grep -E "Failed|Aborted|Error|error:" <<<"$log" | tail -15
+            echo "Full log: docker logs $CONTAINER"
+            return 1
+        fi
+        if grep -q "Caught exception in launch\|Timed out after" <<<"$log" || ! running; then
+            fail "The stack did not come up:"
+            grep -E "Timed out|Caught exception|ERROR|Error" <<<"$log" | tail -8
+            if grep -q "Timed out.*/mavros/state" <<<"$log"; then
+                echo
+                say "No Pixhawk. Check the USB cable and power, then: ls /dev/ttyACM*"
+                say "Then: ./bs stop && ./bs start"
+            fi
+            echo "Full log: docker logs $CONTAINER"
+            return 1
+        fi
+        if (( SECONDS - t0 > START_TIMEOUT )); then
+            fail "Not ready after ${START_TIMEOUT} s. See: docker logs $CONTAINER"
+            return 1
+        fi
+        sleep 1
+    done
+}
+
+cmd_stop() {
+    if running; then
+        say "Disarming..."
+        bringup vehicle disarm || warn "Could not confirm the disarm, check the vehicle!"
+    fi
+    say "Stopping the stack..."
+    "${COMPOSE[@]}" down >/dev/null 2>&1
+    ok "Stopped"
+    local s; s="$(session)"
+    [ -n "$s" ] && echo "Session logs: $s/"
+    rm -f "$CURRENT"
+}
+
+cmd_restart() { cmd_stop; echo; cmd_start; }
+
+cmd_mission() {
+    need_running
+    if [ $# -lt 1 ]; then
+        echo "Usage: ./bs mission <name> [arguments for the mission]"
+        cmd_missions
+        return 1
+    fi
+    bringup mission_runner "$@"
+}
+
+cmd_missions() {
+    echo "Missions:"
+    if running; then
+        in_ros ros2 pkg executables bluespark_autonomy | awk '{print "  " $2}'
+    else   # from the source, without the container
+        sed -n "/console_scripts/,/]/p" src/bluespark_autonomy/setup.py \
+            | grep -oE "'[A-Za-z0-9_]+ *=" | tr -d "' =" | sed 's/^/  /'
+    fi
+}
+
+cmd_vehicle() { need_running; bringup vehicle "$@"; }
+
+cmd_disarm() {
+    if ! running; then
+        fail "The stack is not running, nothing to disarm through. Use the kill switch if needed."
+        return 1
+    fi
+    bringup vehicle disarm
+}
+
+cmd_status() {
+    if ! running; then
+        say "Stack: NOT running   (./bs start)"
+        local last; last="$(ls -d "$LOGS"/20*/ 2>/dev/null | tail -1)"
+        [ -n "$last" ] && echo "Last session: $last"
+        return 1
+    fi
+    say "Stack: running.  Session: $(session)/"
+    bringup vehicle status
+    local rc=$?
+    local s; s="$(session)"
+    if [ -n "$s" ] && [ -f "$s/timeline.log" ]; then
+        echo
+        say "Last events (./bs logs -f to follow):"
+        tail -n 8 "$s/timeline.log"
+    fi
+    return $rc
+}
+
+cmd_logs() {
+    local s; s="$(session)"
+    [ -z "$s" ] && s="$(ls -d "$LOGS"/20*/ 2>/dev/null | tail -1)"
+    s="${s%/}"
+    if [ -z "$s" ]; then
+        echo "No sessions in $LOGS/ yet."
+        return 1
+    fi
+    if [ "${1:-}" = "-f" ]; then
+        tail -n 30 -f "$s/timeline.log"
+        return
+    fi
+    say "Session: $s/"
+    local run res
+    for run in "$s"/[0-9][0-9]_*/; do
+        [ -d "$run" ] || continue
+        res="$(sed -n 's/^result *//p' "$run/info.txt" 2>/dev/null)"
+        printf "  %-45s %s\n" "$(basename "$run")" "${res:-?}"
+    done
+    echo
+    echo "  timeline:   $s/timeline.log      (./bs logs -f to follow it live)"
+    echo "  all:        ls $LOGS/"
+}
+
+cmd_shell() {
+    need_running
+    echo "Inside the container (ROS sourced). Exit with Ctrl+D."
+    docker exec -it "$CONTAINER" bash
+}
+
+cmd_help() {
+    cat <<EOF
+${BOLD}BlueSpark bench control${RESET}   (run on the governer Pi, in the repo folder)
+
+${BOLD}Main${RESET}
+  ./bs start                 start the stack (no mission), waits until ready
+  ./bs mission <name>        run a mission with full logs; Ctrl+C = stop it safely
+  ./bs stop                  disarm and stop everything
+  ./bs disarm                EMERGENCY: disarm + all thrusters 1500
+  ./bs status                Pixhawk / armed / mode / thrusters / nodes + last events
+  ./bs test                  whole chain step by step: nodes, Pixhawk, MANUAL, arm,
+                             each thruster axis 1600 for 2 s, ALT_HOLD, disarm (THRUSTERS SPIN)
+
+${BOLD}Manual control${RESET} (stack running)
+  ./bs arm                   arm (answer from the Pixhawk)
+  ./bs althold               mode ALT_HOLD (hold depth); back with: ./bs mode MANUAL
+  ./bs mode <MODE>           MANUAL, STABILIZE, ALT_HOLD, ...
+  ./bs pwm <axis> <value>    axis: pitch roll heave yaw surge sway, 1100-1900, 1500 = stop
+  ./bs neutral               all thrusters 1500
+
+${BOLD}Other${RESET}
+  ./bs missions              list missions
+  ./bs logs                  runs of the current/last session with their result
+  ./bs logs -f               follow the session timeline live
+  ./bs restart               stop + start
+  ./bs shell                 shell inside the container (plan B: ros2 ... by hand)
+
+${BOLD}Logs${RESET}: $LOGS/<session>/timeline.log and $LOGS/<session>/NN_<time>_<mission>/
+Guide: BENCH.md
+Copy to a laptop: scp -r <user>@<pi>:$(pwd)/$LOGS/<session> .
+EOF
+}
+
+# ----------------------------------------------------------------------------
+cmd="${1:-help}"
+shift || true
+case "$cmd" in
+    start)    cmd_start ;;
+    stop)     cmd_stop ;;
+    restart)  cmd_restart ;;
+    mission)  cmd_mission "$@" ;;
+    missions) cmd_missions ;;
+    disarm)   cmd_disarm ;;
+    arm|mode|pwm|neutral|test) cmd_vehicle "$cmd" "$@" ;;
+    althold)  cmd_vehicle mode ALT_HOLD ;;
+    status)   cmd_status ;;
+    logs)     cmd_logs "$@" ;;
+    shell)    cmd_shell ;;
+    help|-h|--help) cmd_help ;;
+    *)        fail "Unknown command: $cmd"; echo; cmd_help; exit 1 ;;
+esac

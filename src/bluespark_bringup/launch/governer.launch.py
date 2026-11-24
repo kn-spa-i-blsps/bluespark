@@ -39,7 +39,7 @@ merely because the stack came up.
 
 from bluespark_bringup.wait_for import READY_QOS, READY_TOPIC, WaitForMessage, ready_all
 from launch import LaunchDescription
-from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription
+from launch.actions import DeclareLaunchArgument, IncludeLaunchDescription, OpaqueFunction
 from launch.conditions import IfCondition
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
@@ -51,6 +51,21 @@ from std_msgs.msg import String
 # How long to wait for each step before giving up (seconds).
 MAVROS_TIMEOUT = 30.0  # mavros started -> FCU connected
 STACK_TIMEOUT = 15.0  # control nodes started -> both announced ready
+
+
+def _timeline(context):
+    """Session timeline recorder (./bs), only when log_dir is given."""
+    log_dir = LaunchConfiguration("log_dir").perform(context).strip()
+    if not log_dir:
+        return []
+    return [
+        Node(
+            package="bluespark_bringup",
+            executable="timeline_recorder",
+            parameters=[{"log_dir": log_dir}],
+            output="screen",
+        )
+    ]
 
 
 def generate_launch_description():
@@ -72,6 +87,13 @@ def generate_launch_description():
         description="If false, bring up only the stack (mavros + control) and "
         "do NOT start any mission. Use for bench testing, then run "
         "the mission by hand with ros2 run.",
+    )
+
+    log_dir_arg = DeclareLaunchArgument(
+        "log_dir",
+        default_value="",
+        description="Session folder for ./bs: if set, timeline_recorder writes "
+        "<log_dir>/timeline.log. Empty (default) = no recorder, nothing changes.",
     )
 
     fcu_url = LaunchConfiguration("fcu_url")
@@ -134,6 +156,8 @@ def generate_launch_description():
             fcu_url_arg,
             autonomy_exe_arg,
             run_autonomy_arg,
+            log_dir_arg,
+            OpaqueFunction(function=_timeline),  # first, so it sees mavros start
             mavros,
             wait_for_mavros,
         ]

@@ -26,7 +26,12 @@ setup(
     tests_require=['pytest'],
     entry_points={
         'console_scripts': [
-            # No nodes live in this package — it only ships launch files.
+            # ./bs: session timeline (started by governer.launch.py log_dir:=...)
+            'timeline_recorder = bluespark_bringup.timeline_recorder:main',
+            # ./bs mission <name>: one mission with logs + safety stop
+            'mission_runner = bluespark_bringup.mission_runner:main',
+            # ./bs arm / disarm / mode / pwm / neutral / status / althold / test
+            'vehicle = bluespark_bringup.vehicle_cli:main',
         ],
     },
 )

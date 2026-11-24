@@ -6,6 +6,16 @@ This repository contains the code responsible for the robot's control and missio
 
 Codebase and information about research and development of BlueSpark's *computer vision* can be found [here](https://github.com/MaciejBorowiecki/BlueSpark-autonomy).
 
+# Bench tests on the governer Pi
+
+```bash
+./bs start      # start the stack
+./bs test       # check everything step by step (thrusters spin)
+./bs stop       # disarm and stop
+```
+
+Full guide: [BENCH.md](BENCH.md).
+
 # Prerequisites
 The recommended and easiest way to run the BlueSpark codebase is using Docker. This ensures a consistent environment and eliminates the need for complex local setup.
 
