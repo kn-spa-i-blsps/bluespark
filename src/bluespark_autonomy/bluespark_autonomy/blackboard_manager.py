@@ -68,7 +68,6 @@ class BlackboardManager:
             key="current_depth",
             access=py_trees.common.Access.WRITE
         )
-        self.depth_bb.current_depth = 0.0
         self.atm_pressure = 101325
         self.current_pressure = 101325
 
