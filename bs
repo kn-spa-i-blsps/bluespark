@@ -71,6 +71,15 @@ cmd_start() {
         ok "Already running. Session: $(session)/"
         return 0
     fi
+    # Another BlueSpark container (e.g. prod: bluespark_governer) would fight
+    # over the Pixhawk's serial port with ours.
+    local others
+    others="$(docker ps --format '{{.Names}}' | grep '^bluespark_' | grep -vx "$CONTAINER")"
+    if [ -n "$others" ]; then
+        fail "Another BlueSpark container is running: $others"
+        echo "Stop it first, e.g.: docker compose -f docker-compose.prod.yml down"
+        return 1
+    fi
     mkdir -p "$LOGS"
     local s; s="$LOGS/$(date +%Y-%m-%d_%H-%M-%S)"
     mkdir -p "$s" && echo "$s" > "$CURRENT"

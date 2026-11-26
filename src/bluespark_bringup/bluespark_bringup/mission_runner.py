@@ -19,9 +19,10 @@ Needs the governer stack running (./bs start). Steps:
   5. ALWAYS (finished, failed, crashed, Ctrl+C, even an error of the runner
      itself or a lost terminal): disarm + all thrusters 1500.
 
-Ctrl+C once: asks the mission to stop (it gets SIGINT), then safety stop.
-Ctrl+C again: kills the mission immediately, then safety stop.
-Closing the terminal / SSH dropping counts as Ctrl+C.
+Ctrl+C once: disarms + thrusters 1500 right away, asks the mission to stop
+(SIGINT), and runs the safety stop again once it is gone.
+Ctrl+C again: kills the mission immediately.
+Closing the terminal (SIGHUP) is handled like Ctrl+C (not tested over a real SSH drop yet).
 
 Result (info.txt, exit code of this command = exit code of the mission):
   OK (0), FAILED: setup (2), FAILED: a step of the mission failed (3),
@@ -290,13 +291,20 @@ class MissionRunner:
             pump = threading.Thread(target=self.pump_output, args=(console,), daemon=True)
             pump.start()
 
-            # Wait; after a Ctrl+C give the mission 10 s to stop by itself.
+            # Wait. On Ctrl+C: disarm RIGHT AWAY (do not wait for the mission to
+            # close, it could hang with the thrusters on), then give the mission
+            # 10 s to stop by itself before killing it.
+            early_stop_done = False
             while self.proc.poll() is None:
                 time.sleep(0.1)
-                if self.interrupts and not wait(self.proc, 10):
-                    out(">>> The mission does not stop, killing it.")
-                    kill_group(self.proc, signal.SIGKILL)
-                    self.proc.wait()
+                if self.interrupts and not early_stop_done:
+                    early_stop_done = True
+                    for _ok, text in vehicle.safe_stop():
+                        out(f">>> {text}")
+                    if not wait(self.proc, 10):
+                        out(">>> The mission does not stop, killing it.")
+                        kill_group(self.proc, signal.SIGKILL)
+                        self.proc.wait()
             code = self.proc.returncode
             duration = time.monotonic() - start
             pump.join(timeout=2)

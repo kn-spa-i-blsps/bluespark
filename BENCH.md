@@ -77,7 +77,9 @@ Result: ALL OK  (12/12 OK)
 ```
 
 One axis at a time, so you can **watch which thrusters move** for each axis.
-"seen on /mavros/rc/override" means the value really went out to the Pixhawk.
+"seen on /mavros/rc/override" means our control node really sent the value to
+mavros, which passes it to the Pixhawk. It does not prove the Pixhawk moved the
+thrusters: that is what your eyes are for.
 Gentler or longer: `./bs test --step 50 --seconds 3`.
 
 ### 3. Work

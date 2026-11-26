@@ -49,7 +49,8 @@ services:
     environment:
       - ROS_DOMAIN_ID=42 # MUST match every other Pi
       - ROS_LOCALHOST_ONLY=0
-      # Session log folder, set by ./bs start. Empty when started by hand -> no timeline.log.
+      # Session log folder, set by ./bs start. Empty when started by hand -> no timeline.log
+      # (log_dir is then left out: ros2 launch rejects an empty `log_dir:=`).
       - BS_SESSION_DIR=${BS_SESSION_DIR:-}
 
     # Build (offline-safe) then bring up ONLY the stack, no mission.
@@ -61,7 +62,7 @@ services:
         source /opt/ros/jazzy/setup.bash &&
         colcon build --symlink-install --parallel-workers 2 &&
         source /workspace/install/setup.bash &&
-        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false log_dir:=$${BS_SESSION_DIR}
+        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false $${BS_SESSION_DIR:+log_dir:=$$BS_SESSION_DIR}
       '
 
     # ros2 launch shuts its nodes down cleanly on SIGINT; on docker's default

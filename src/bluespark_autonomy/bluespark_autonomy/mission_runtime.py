@@ -22,7 +22,7 @@ run_mission():
         setup failed -> exit code 2   (services missing)
         root FAILURE -> exit code 3   (a behaviour failed: the mission stops there)
         Ctrl+C       -> exit code 130
-    Anything else (e.g. 1 = uncaught Python exception) = the mission crashed.
+        crash        -> exit code 1   (uncaught exception, traceback in the log)
 
 The mission does not disarm on failure by itself: ./bs mission (mission_runner)
 disarms and sets all thrusters to 1500 after every run, whatever the result.
@@ -30,6 +30,7 @@ disarms and sets all thrusters to 1500 after every run, whatever the result.
 
 import sys
 import time
+import traceback
 
 import py_trees
 import py_trees_ros.trees
@@ -39,6 +40,7 @@ from rclpy.executors import ExternalShutdownException
 from bluespark_autonomy.blackboard_manager import BlackboardManager
 
 EXIT_SUCCESS = 0
+EXIT_CRASHED = 1  # uncaught exception, like plain Python
 EXIT_SETUP_FAILED = 2
 EXIT_FAILURE = 3  # not 1: Python exits with 1 on an uncaught exception (crash)
 EXIT_INTERRUPTED = 130
@@ -87,7 +89,7 @@ def run_mission(name, create_tree, period_ms=100, setup_timeout=15.0, args=None)
     rclpy.init(args=args)
     node = rclpy.create_node(f"{name}_node")
     logger = node.get_logger()
-    exit_code = EXIT_INTERRUPTED
+    exit_code = EXIT_CRASHED  # until proven otherwise
     tree = None
 
     try:
@@ -121,8 +123,14 @@ def run_mission(name, create_tree, period_ms=100, setup_timeout=15.0, args=None)
         elif root.status == py_trees.common.Status.FAILURE:
             logger.error(f"Mission '{name}' finished: FAILURE")
             exit_code = EXIT_FAILURE
+        else:  # rclpy shut down (Ctrl+C) between two spins
+            exit_code = EXIT_INTERRUPTED
     except (KeyboardInterrupt, ExternalShutdownException):
         exit_code = EXIT_INTERRUPTED
+    except Exception:  # noqa: BLE001 - report it, then exit with EXIT_CRASHED
+        # Without this the sys.exit() below would swallow the traceback.
+        logger.error(f"Mission '{name}' crashed:\n{traceback.format_exc()}")
+        exit_code = EXIT_CRASHED
     finally:
         if tree is not None:
             try:
