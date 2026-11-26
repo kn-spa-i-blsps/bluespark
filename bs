@@ -3,6 +3,8 @@
 # bs — BlueSpark bench control. Run on the governer Pi, from the repo folder:
 #
 #   ./bs start                 start the stack (no mission), wait until ready
+#   ./bs sim                   the same, against the simulation (ArduSub SITL in
+#                              Gazebo, repo bluespark-simulation) instead of the Pixhawk
 #   ./bs mission <name>        run a mission with full logs; Ctrl+C = stop it safely
 #   ./bs stop                  disarm and stop everything
 #   ./bs disarm                EMERGENCY: disarm + all thrusters 1500
@@ -13,6 +15,7 @@
 #   User guide: BENCH.md
 #
 # Logs: logs/<session>/ (one session = from ./bs start to ./bs stop)
+#   <session> = date_time, with _sim at the end for ./bs sim sessions
 #   timeline.log               everything, in order, from all nodes
 #   NN_HH-MM-SS_<mission>/     one folder per mission run (info.txt, console.log, bag/)
 #
@@ -30,6 +33,13 @@ LOGS=logs
 CURRENT="$LOGS/.current"   # path of the running session, e.g. logs/2026-11-23_21-10-00
 START_TIMEOUT=600          # s: colcon build + Pixhawk + control nodes
 
+# Simulation (./bs sim): Gazebo + ArduSub SITL run in the bs_sim container
+# (repo bluespark-simulation, started by hand there); its MAVProxy forwards
+# MAVLink to udp 14550 on this machine, where mavros listens.
+SIM_CONTAINER=bs_sim
+SIM_FCU_URL="udp://:14550@"
+SIM_PORT=14550
+
 if [ -t 1 ]; then
     BOLD=$'\e[1m'; GREEN=$'\e[32m'; RED=$'\e[31m'; YELLOW=$'\e[33m'; RESET=$'\e[0m'
 else
@@ -42,9 +52,18 @@ say()  { echo "${BOLD}$*${RESET}"; }
 
 running() { [ "$(docker inspect -f '{{.State.Running}}' "$CONTAINER" 2>/dev/null)" = "true" ]; }
 session() { [ -f "$CURRENT" ] && cat "$CURRENT"; }
+# mode_of <session dir>: "sim" or "hw" (Pixhawk). Sessions from before ./bs sim
+# existed have no mode line: they were hw.
+mode_of() {
+    local m; m="$([ -n "$1" ] && sed -n 's/^mode *\([a-z]*\).*/\1/p' "$1/session_info.txt" 2>/dev/null)"
+    echo "${m:-hw}"
+}
+session_mode() { mode_of "$(session)"; }   # mode of the current session
+# Tag shown next to a session in ./bs logs / status: "[SIM]" or nothing.
+mode_tag() { [ "$(mode_of "$1")" = sim ] && echo "${YELLOW}[SIM]${RESET}"; }
 need_running() {
     running && return 0
-    fail "The stack is not running. Start it with: ./bs start"
+    fail "The stack is not running. Start it with: ./bs start   (simulation: ./bs sim)"
     exit 1
 }
 
@@ -66,40 +85,92 @@ bringup() {
 }
 
 # ----------------------------------------------------------------------------
+# Before ./bs sim: is the simulation up and is mavros' UDP port free?
+# Fails fast with what to do, instead of a mavros timeout 30 s later.
+sim_preflight() {
+    if [ "$(docker inspect -f '{{.State.Running}}' "$SIM_CONTAINER" 2>/dev/null)" != "true" ]; then
+        fail "The simulation container ($SIM_CONTAINER) is not running."
+        echo "In the bluespark-simulation repo: ./start_docker.sh, then (README there):"
+        echo "  terminal 1: bash scripts/run_gazebo.sh"
+        echo "  terminal 2: bash scripts/run_ardusub.sh     (wait for MANUAL>)"
+        return 1
+    fi
+    if ! docker exec "$SIM_CONTAINER" pgrep -f "gz sim" >/dev/null 2>&1; then
+        fail "Gazebo is not running in $SIM_CONTAINER."
+        echo "Start it first, in $SIM_CONTAINER:"
+        echo "  terminal 1: bash scripts/run_gazebo.sh"
+        echo "  terminal 2: bash scripts/run_ardusub.sh     (wait for MANUAL>)"
+        return 1
+    fi
+    if ! docker exec "$SIM_CONTAINER" pgrep -x ardusub >/dev/null 2>&1 \
+        || ! docker exec "$SIM_CONTAINER" pgrep -f mavproxy.py >/dev/null 2>&1; then
+        fail "ArduSub SITL / MAVProxy is not running in $SIM_CONTAINER."
+        echo "Start it (in $SIM_CONTAINER, Gazebo already running): bash scripts/run_ardusub.sh"
+        echo "and wait for the MANUAL> prompt."
+        return 1
+    fi
+    if command -v ss >/dev/null && [ -n "$(ss -Hlun "sport = :$SIM_PORT" 2>/dev/null)" ]; then
+        fail "UDP port $SIM_PORT is already in use: probably another mavros"
+        echo "(e.g. a 'ros2 launch ... governer.launch.py' in the dev container). Stop it first."
+        return 1
+    fi
+    ok "Simulation is up: Gazebo + ArduSub SITL in $SIM_CONTAINER"
+}
+
+# cmd_start [hw|sim]: hw = Pixhawk on USB (./bs start), sim = ArduSub SITL (./bs sim).
 cmd_start() {
+    local mode="${1:-hw}"
     if running; then
-        ok "Already running. Session: $(session)/"
+        ok "Already running ($(mode_name "$(session_mode)")). Session: $(session)/"
+        if [ "$(session_mode)" != "$mode" ]; then
+            warn "You asked for $(mode_name "$mode"). Switch with: ./bs stop && ./bs $( [ "$mode" = sim ] && echo sim || echo start )"
+            return 1
+        fi
         return 0
     fi
-    # Another BlueSpark container (e.g. prod: bluespark_governer) would fight
-    # over the Pixhawk's serial port with ours.
-    local others
-    others="$(docker ps --format '{{.Names}}' | grep '^bluespark_' | grep -vx "$CONTAINER")"
-    if [ -n "$others" ]; then
-        fail "Another BlueSpark container is running: $others"
-        echo "Stop it first, e.g.: docker compose -f docker-compose.prod.yml down"
-        return 1
+    local fcu=""
+    if [ "$mode" = sim ]; then
+        sim_preflight || return 1
+        fcu="$SIM_FCU_URL"
+    else
+        # Another BlueSpark container (e.g. prod: bluespark_governer) would fight
+        # over the Pixhawk's serial port with ours.
+        local others
+        others="$(docker ps --format '{{.Names}}' | grep '^bluespark_' | grep -vx "$CONTAINER")"
+        if [ -n "$others" ]; then
+            fail "Another BlueSpark container is running: $others"
+            echo "Stop it first, e.g.: docker compose -f docker-compose.prod.yml down"
+            return 1
+        fi
     fi
     mkdir -p "$LOGS"
     local s; s="$LOGS/$(date +%Y-%m-%d_%H-%M-%S)"
+    [ "$mode" = sim ] && s+="_sim"   # visible in ls logs/ and when copied off the Pi
     mkdir -p "$s" && echo "$s" > "$CURRENT"
     {
         echo "started   $(date '+%Y-%m-%d %H:%M:%S')"
         echo "host      $(hostname)"
+        echo "mode      $mode  ($(mode_name "$mode")${fcu:+, fcu_url $fcu})"
         echo "git       $(git rev-parse --short HEAD 2>/dev/null) on $(git rev-parse --abbrev-ref HEAD 2>/dev/null)"
         git status --porcelain 2>/dev/null | sed 's/^/changed  /'
     } > "$s/session_info.txt"
 
-    say "Starting the stack. Session logs: $s/"
-    BS_SESSION_DIR="/workspace/$s" "${COMPOSE[@]}" up -d >/dev/null || {
+    say "Starting the stack ($(mode_name "$mode")). Session logs: $s/"
+    # FCU_URL is always set (empty = Pixhawk default of governer.launch.py), so a
+    # FCU_URL exported in your shell cannot silently change what ./bs start does.
+    FCU_URL="$fcu" BS_SESSION_DIR="/workspace/$s" "${COMPOSE[@]}" up -d >/dev/null || {
         fail "docker compose up failed (see the error above)"
         return 1
     }
-    follow_start
+    follow_start "$mode"
 }
+
+mode_name() { [ "$1" = sim ] && echo "SIMULATION, ArduSub SITL" || echo "Pixhawk"; }
 
 # Watch the container log until the stack is ready or failed; print the steps.
 follow_start() {
+    local mode="$1" fc="Pixhawk"
+    [ "$mode" = sim ] && fc="ArduSub SITL"
     local since; since="$(docker inspect -f '{{.State.StartedAt}}' "$CONTAINER")"
     local t0=$SECONDS
     shown="" log=""
@@ -112,11 +183,12 @@ follow_start() {
     while :; do
         log="$(docker logs --since "$since" "$CONTAINER" 2>&1)"
         step build  "^Summary: .* finished"        "Workspace built"
-        step wait   "Waiting for /mavros/state"     "mavros started, waiting for the Pixhawk..."
-        step fcu    "Got /mavros/state"             "Pixhawk connected"
+        step wait   "Waiting for /mavros/state"     "mavros started, waiting for the $fc..."
+        step fcu    "Got /mavros/state"             "$fc connected"
         if grep -q "Got /bluespark/ready" <<<"$log"; then
             ok "Control nodes ready"
             echo
+            [ "$mode" = sim ] && say "SIMULATION: watch the vehicle in Gazebo."
             say "READY.  Next: ./bs test   or   ./bs mission <name>   (./bs missions lists them)"
             say "        Manual: ./bs arm | ./bs althold | ./bs pwm surge 1600 | ./bs disarm"
             return 0
@@ -132,8 +204,13 @@ follow_start() {
             grep -E "Timed out|Caught exception|ERROR|Error" <<<"$log" | tail -8
             if grep -q "Timed out.*/mavros/state" <<<"$log"; then
                 echo
-                say "No Pixhawk. Check the USB cable and power, then: ls /dev/ttyACM*"
-                say "Then: ./bs stop && ./bs start"
+                if [ "$mode" = sim ]; then
+                    say "No MAVLink from ArduSub SITL. In $SIM_CONTAINER: is run_ardusub.sh"
+                    say "at the MANUAL> prompt? Restarted ArduSub? Then: ./bs stop && ./bs sim"
+                else
+                    say "No Pixhawk. Check the USB cable and power, then: ls /dev/ttyACM*"
+                    say "Then: ./bs stop && ./bs start"
+                fi
             fi
             echo "Full log: docker logs $CONTAINER"
             return 1
@@ -156,10 +233,12 @@ cmd_stop() {
     ok "Stopped"
     local s; s="$(session)"
     [ -n "$s" ] && echo "Session logs: $s/"
+    [ "$(session_mode)" = sim ] && echo "Gazebo and ArduSub SITL keep running in $SIM_CONTAINER."
     rm -f "$CURRENT"
 }
 
-cmd_restart() { cmd_stop; echo; cmd_start; }
+# Restart in the same mode as the current session (sim stays sim).
+cmd_restart() { local m; m="$(session_mode)"; cmd_stop; echo; cmd_start "$m"; }
 
 cmd_mission() {
     need_running
@@ -193,12 +272,12 @@ cmd_disarm() {
 
 cmd_status() {
     if ! running; then
-        say "Stack: NOT running   (./bs start)"
+        say "Stack: NOT running   (./bs start, simulation: ./bs sim)"
         local last; last="$(ls -d "$LOGS"/20*/ 2>/dev/null | tail -1)"
-        [ -n "$last" ] && echo "Last session: $last"
+        [ -n "$last" ] && echo "Last session: $last $(mode_tag "${last%/}")"
         return 1
     fi
-    say "Stack: running.  Session: $(session)/"
+    say "Stack: running ($(mode_name "$(session_mode)")).  Session: $(session)/"
     bringup vehicle status
     local rc=$?
     local s; s="$(session)"
@@ -222,7 +301,7 @@ cmd_logs() {
         tail -n 30 -f "$s/timeline.log"
         return
     fi
-    say "Session: $s/"
+    say "Session: $s/ $(mode_tag "$s")"
     local run res
     for run in "$s"/[0-9][0-9]_*/; do
         [ -d "$run" ] || continue
@@ -231,7 +310,7 @@ cmd_logs() {
     done
     echo
     echo "  timeline:   $s/timeline.log      (./bs logs -f to follow it live)"
-    echo "  all:        ls $LOGS/"
+    echo "  all:        ls $LOGS/      (simulation sessions end with _sim)"
 }
 
 cmd_shell() {
@@ -246,6 +325,8 @@ ${BOLD}BlueSpark bench control${RESET}   (run on the governer Pi, in the repo fo
 
 ${BOLD}Main${RESET}
   ./bs start                 start the stack (no mission), waits until ready
+  ./bs sim                   the same against the simulation (ArduSub SITL in Gazebo,
+                             container $SIM_CONTAINER; start Gazebo + ArduSub there first)
   ./bs mission <name>        run a mission with full logs; Ctrl+C = stop it safely
   ./bs stop                  disarm and stop everything
   ./bs disarm                EMERGENCY: disarm + all thrusters 1500
@@ -264,10 +345,11 @@ ${BOLD}Other${RESET}
   ./bs missions              list missions
   ./bs logs                  runs of the current/last session with their result
   ./bs logs -f               follow the session timeline live
-  ./bs restart               stop + start
+  ./bs restart               stop + start (in the same mode: sim stays sim)
   ./bs shell                 shell inside the container (plan B: ros2 ... by hand)
 
 ${BOLD}Logs${RESET}: $LOGS/<session>/timeline.log and $LOGS/<session>/NN_<time>_<mission>/
+      (<session> ends with _sim for ./bs sim)
 Guide: BENCH.md
 Copy to a laptop: scp -r <user>@<pi>:$(pwd)/$LOGS/<session> .
 EOF
@@ -277,7 +359,8 @@ EOF
 cmd="${1:-help}"
 shift || true
 case "$cmd" in
-    start)    cmd_start ;;
+    start)    cmd_start hw ;;
+    sim)      cmd_start sim ;;
     stop)     cmd_stop ;;
     restart)  cmd_restart ;;
     mission)  cmd_mission "$@" ;;

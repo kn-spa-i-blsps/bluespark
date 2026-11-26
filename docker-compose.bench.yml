@@ -61,8 +61,9 @@ services:
       # (log_dir is then left out: ros2 launch rejects an empty `log_dir:=`).
       - BS_SESSION_DIR=${BS_SESSION_DIR:-}
       # MAVLink link to the flight controller. Empty = Pixhawk on USB (default
-      # of governer.launch.py). Simulation (ArduSub SITL, MAVProxy forwards to
-      # udp 14550):  FCU_URL=udp://:14550@ ./bs start
+      # of governer.launch.py). Set by ./bs (./bs sim -> udp://:14550@, where
+      # MAVProxy of ArduSub SITL sends; ./bs start -> empty). By hand:
+      #   FCU_URL=udp://:14550@ docker compose -f docker-compose.bench.yml up -d
       - FCU_URL=${FCU_URL:-}
 
     # Build (offline-safe) then bring up ONLY the stack, no mission.

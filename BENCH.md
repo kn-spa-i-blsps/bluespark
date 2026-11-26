@@ -135,6 +135,40 @@ Session logs: logs/2026-11-24_01-11-16/
 
 ---
 
+## Simulation (`./bs sim`)
+
+The same session, but against the simulation instead of the Pixhawk: ArduSub
+SITL (the Pixhawk firmware compiled for Linux) drives the BlueROV2 in Gazebo.
+Runs on a laptop; nothing is plugged in. Everything below the start works the
+same: `./bs test`, `./bs mission <name>`, `./bs pwm ...`, `./bs logs`, `./bs stop`.
+
+1. Start the simulation by hand, in the `bs_sim` container (repo
+   `bluespark-simulation`, `./start_docker.sh`; see its README):
+   - terminal 1: `bash scripts/run_gazebo.sh`
+   - terminal 2: `bash scripts/run_ardusub.sh`, wait for the `MANUAL>` prompt
+2. Here: `./bs sim`
+
+```
+$ ./bs sim
+[ OK ] Simulation is up: Gazebo + ArduSub SITL in bs_sim
+Starting the stack (SIMULATION, ArduSub SITL). Session logs: logs/...
+[ OK ] mavros started, waiting for the ArduSub SITL...
+[ OK ] ArduSub SITL connected
+[ OK ] Control nodes ready
+```
+
+- Before starting, `./bs sim` checks that `bs_sim`, Gazebo and ArduSub/MAVProxy
+  run and that UDP port 14550 (where MAVProxy sends MAVLink) is free, and says
+  what to start if not.
+- `./bs restart` stays in simulation; `session_info.txt` has `mode sim`.
+- Simulation sessions are marked so they are never mistaken for real tests:
+  the folder ends with `_sim` (`logs/2026-11-26_22-40-00_sim/`), and
+  `./bs logs` / `./bs status` show `[SIM]`.
+- `./bs stop` stops only the stack; Gazebo and ArduSub keep running.
+- Restarted ArduSub? Then also `./bs restart`.
+
+---
+
 ## Test missions
 
 All three use the **Pixhawk's own depth hold (ALT_HOLD)**: they switch to ALT_HOLD,
@@ -171,6 +205,7 @@ if the front drifts away from the center, swap `yaw_pwm` to the other side.
 | Command | What it does |
 | :-- | :-- |
 | `./bs start` | Start the stack (no mission). Shows each step, waits until ready. |
+| `./bs sim` | The same, against the simulation (ArduSub SITL in Gazebo), see [Simulation](#simulation-bs-sim). |
 | `./bs test` | Check the whole chain step by step. **Thrusters spin.** Options: `--step 50`, `--seconds 3` |
 | `./bs mission <name>` | Run a mission once, with full logs. Ctrl+C = stop it safely. Parameters: `--ros-args -p name:=value` |
 | `./bs stop` | Disarm and stop everything. |
@@ -184,7 +219,7 @@ if the front drifts away from the center, swap `yaw_pwm` to the other side.
 | `./bs missions` | List the missions. |
 | `./bs logs` | Mission runs of the session and their result. |
 | `./bs logs -f` | Follow the session log live (Ctrl+C to quit). |
-| `./bs restart` | Stop + start (e.g. after `git pull`). |
+| `./bs restart` | Stop + start (e.g. after `git pull`), in the same mode (`sim` stays `sim`). |
 | `./bs shell` | A shell inside the container: plan B, see below. |
 | `./bs help` | This list, short. |
 
@@ -192,7 +227,8 @@ if the front drifts away from the center, swap `yaw_pwm` to the other side.
 
 ## Logs
 
-Everything from `./bs start` to `./bs stop` is one **session**, in `logs/`:
+Everything from `./bs start` to `./bs stop` is one **session**, in `logs/`
+(a simulation session, `./bs sim`, has `_sim` at the end of the folder name):
 
 ```
 logs/2026-11-24_01-11-16/
@@ -275,6 +311,8 @@ The `bag/` folder opens in PlotJuggler or Foxglove (`.mcap` file), or replays wi
 | You see | Do this |
 | :-- | :-- |
 | `No Pixhawk. Check the USB cable and power` | Check the cable and that the Pixhawk is powered. `ls /dev/ttyACM*` must show `/dev/ttyACM0`. Then `./bs stop && ./bs start`. |
+| `No MAVLink from ArduSub SITL` (`./bs sim`) | In `bs_sim`, `run_ardusub.sh` must be at the `MANUAL>` prompt. Then `./bs stop && ./bs sim`. |
+| `UDP port 14550 is already in use` (`./bs sim`) | Another mavros listens there, e.g. a `ros2 launch ... governer.launch.py` in the dev container. Stop it. |
 | `The code does not build` | Someone pushed broken code, or you have local changes: `git status`, `git pull`. Full log: `docker logs bluespark_bench`. |
 | `The stack is not running` | `./bs start` |
 | `Already running` after `./bs start` | Fine, it is already up. To start fresh: `./bs restart`. |
