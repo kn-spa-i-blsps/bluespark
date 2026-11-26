@@ -61,7 +61,13 @@ RUN git config --system --add safe.directory '*'
 
 # The Dev Container runs as the image's `ubuntu` user (UID 1000, like the usual
 # host user) so files it creates in the /workspace bind mount (.git, build/, ...)
-# are not owned by root on the host. Give it camera + serial (Pixhawk) access.
-RUN usermod -aG video,dialout ubuntu
+# are not owned by root on the host. Give it camera + serial (Pixhawk) access,
+# and passwordless sudo (the account has no password, so plain sudo could never
+# work; the containers are privileged anyway, so this grants nothing new).
+# Use sudo for system things (apt, /etc), NOT for colcon/git in /workspace:
+# files created there would be root-owned on the host.
+RUN usermod -aG video,dialout ubuntu && \
+    echo "ubuntu ALL=(ALL) NOPASSWD:ALL" > /etc/sudoers.d/ubuntu && \
+    chmod 0440 /etc/sudoers.d/ubuntu
 
 CMD ["bash"]

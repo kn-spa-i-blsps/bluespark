@@ -40,6 +40,14 @@ services:
     # Host network + privileged: cross-Pi ROS 2 discovery + hardware (serial/I2C).
     network_mode: host
     privileged: true
+    # Run as your host user, not root (same as docker-compose.dev.yml): /workspace
+    # is a bind mount, so files colcon creates as root (build/, install/, log/)
+    # would be root-owned on the host and break `colcon build` / `git` there.
+    # Defaults to 1000; different on your machine? Put UID=... GID=... in .env.
+    # dialout = Pixhawk serial. Switching an existing checkout from root: run once
+    #   sudo chown -R "$(id -u):$(id -g)" build install log logs
+    user: "${UID:-1000}:${GID:-1000}"
+    group_add: [dialout]
 
     volumes:
       - .:/workspace # live-mounted code; git pull + restart, no rebuild
@@ -52,6 +60,10 @@ services:
       # Session log folder, set by ./bs start. Empty when started by hand -> no timeline.log
       # (log_dir is then left out: ros2 launch rejects an empty `log_dir:=`).
       - BS_SESSION_DIR=${BS_SESSION_DIR:-}
+      # MAVLink link to the flight controller. Empty = Pixhawk on USB (default
+      # of governer.launch.py). Simulation (ArduSub SITL, MAVProxy forwards to
+      # udp 14550):  FCU_URL=udp://:14550@ ./bs start
+      - FCU_URL=${FCU_URL:-}
 
     # Build (offline-safe) then bring up ONLY the stack, no mission.
     #   - NO `pip install` here: everything is already in the image, so this
@@ -62,7 +74,7 @@ services:
         source /opt/ros/jazzy/setup.bash &&
         colcon build --symlink-install --parallel-workers 2 &&
         source /workspace/install/setup.bash &&
-        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false $${BS_SESSION_DIR:+log_dir:=$$BS_SESSION_DIR}
+        exec ros2 launch bluespark_bringup governer.launch.py run_autonomy:=false $${FCU_URL:+fcu_url:=$$FCU_URL} $${BS_SESSION_DIR:+log_dir:=$$BS_SESSION_DIR}
       '
 
     # ros2 launch shuts its nodes down cleanly on SIGINT; on docker's default
