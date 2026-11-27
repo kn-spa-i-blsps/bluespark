@@ -9,17 +9,23 @@ behaviour tree:
   vehicle_manager   -> arming + mode services (/manager/set_arming, /manager/set_mode)
   autonomy (py_trees) -> the mission behaviour tree   [only if run_autonomy:=true]
 
-Startup ORDER matters, so each step waits until the previous one is really
-ready (WaitForMessage, see bluespark_bringup/wait_for.py), not a fixed delay:
-  1. mavros
-  2. wait for /mavros/state with connected == True        (Pixhawk link is up)
-  3. rc_override_node + vehicle_manager_node, together
-  4. wait until both published their name on /bluespark/ready  (services created)
-  5. autonomy                                                   [optional]
-If a wait times out (MAVROS_TIMEOUT / STACK_TIMEOUT), the launch shuts down with
-return code 1, so run_governer.sh treats it as a crash (disarm + restart).
-Debug readiness with:
-    ros2 topic echo /bluespark/ready --qos-durability transient_local
+Everything starts AT ONCE, the launch does not wait for anything. Each node
+copes with its dependencies itself (ROS 2 style):
+  * rc_override_node / vehicle_manager just start; their mavros clients and
+    publishers work as soon as mavros is there (wait_for_service per call).
+  * the mission (bluespark_autonomy.mission_runtime) waits up to setup_timeout
+    for the FCU link (/mavros/state connected) and for every service it uses;
+    missing after that -> it exits with code 2 before doing anything.
+  * the control nodes are respawned if they die, so a crash there does not
+    take the whole stack down.
+Check the stack from outside with:  vehicle ready   (./bs start does that).
+
+Launch return code (read by run_governer.sh):
+  * mission exits 0                -> launch shuts down, rc 0 = "mission complete"
+  * mission exits != 0 (failed,    -> launch shuts down, rc 1 = crash
+    setup failed, crashed)            (run_governer.sh disarms + restarts)
+  * Ctrl+C / SIGINT                -> normal shutdown, not turned into rc 1
+  (bluespark_bringup/launch_exit.py)
 
 DEV vs PROD:
   * PROD (run_governer.sh): launches with defaults -> autonomy runs.
@@ -29,32 +35,34 @@ DEV vs PROD:
         # then, in another shell in the same container:
         ros2 run bluespark_autonomy benchTest --ros-args -p mission:=wiggle
     This is what docker-compose.bench.yml uses so you never hand-start mavros.
-SCOPE — this launch only STARTS the stack in order. It does NOT handle restart
-on crash, clean-exit vs crash, or disarm-on-exit. Those stay in run_governer.sh.
+SCOPE — this launch only STARTS the stack and turns the mission's exit code into
+its own. It does NOT restart the stack or disarm. Those stay in run_governer.sh.
 
 Arming / mode setting is intentionally NOT done here — the mission (py_trees)
 or the supervising script decides when to arm, so the vehicle is never armed
 merely because the stack came up.
 """
 
-from bluespark_bringup.wait_for import READY_QOS, READY_TOPIC, WaitForMessage, ready_all
+from bluespark_bringup.launch_exit import end_launch_on_exit
 from launch import LaunchDescription
 from launch.actions import (
     DeclareLaunchArgument,
     IncludeLaunchDescription,
     OpaqueFunction,
+    RegisterEventHandler,
 )
 from launch.conditions import IfCondition
+from launch.event_handlers import OnProcessExit
 from launch.launch_description_sources import AnyLaunchDescriptionSource
 from launch.substitutions import LaunchConfiguration, PathJoinSubstitution
 from launch_ros.actions import Node
 from launch_ros.substitutions import FindPackageShare
-from mavros_msgs.msg import State
-from std_msgs.msg import String
 
-# How long to wait for each step before giving up (seconds).
-MAVROS_TIMEOUT = 30.0  # mavros started -> FCU connected
-STACK_TIMEOUT = 15.0  # control nodes started -> both announced ready
+# How long the mission waits for the FCU link + its services (seconds). Covers
+# mavros start + Pixhawk connect on the Pi (~30 s worst case seen so far).
+SETUP_TIMEOUT = 45.0
+# Delay before a dead control node is started again (seconds).
+RESPAWN_DELAY = 2.0
 
 
 def _timeline(context):
@@ -73,7 +81,6 @@ def _timeline(context):
 
 
 def generate_launch_description():
-
     # --- Launch arguments ---
     fcu_url_arg = DeclareLaunchArgument(
         "fcu_url",
@@ -104,7 +111,7 @@ def generate_launch_description():
     autonomy_executable = LaunchConfiguration("autonomy_executable")
     run_autonomy = LaunchConfiguration("run_autonomy")
 
-    # --- 1. mavros ---
+    # --- mavros ---
     mavros = IncludeLaunchDescription(
         AnyLaunchDescriptionSource(
             PathJoinSubstitution([FindPackageShare("mavros"), "launch", "apm.launch"])
@@ -112,48 +119,37 @@ def generate_launch_description():
         launch_arguments={"fcu_url": fcu_url}.items(),
     )
 
-    # --- 3. control nodes (started together once mavros is connected) ---
+    # --- control nodes: no dependency at startup, respawned if they die ---
     rc_override = Node(
         package="bluespark_control",
         executable="rc_override_node",
         name="rc_override_node",
         output="screen",
+        respawn=True,
+        respawn_delay=RESPAWN_DELAY,
     )
     vehicle_manager = Node(
         package="bluespark_control",
         executable="vehicle_manager_node",
         name="vehicle_manager_node",
         output="screen",
+        respawn=True,
+        respawn_delay=RESPAWN_DELAY,
     )
 
-    # --- 5. autonomy / py_trees --- only when run_autonomy is true.
+    # --- autonomy / py_trees --- only when run_autonomy is true. Waits for the
+    # FCU and its services by itself (setup_timeout); its exit ends the launch.
     autonomy = Node(
         package="bluespark_autonomy",
         executable=autonomy_executable,
         name="autonomy_node",
         output="screen",
+        parameters=[{"setup_timeout": SETUP_TIMEOUT}],
         condition=IfCondition(run_autonomy),
     )
-
-    # --- 4. wait for both control nodes, then start autonomy ---
-    wait_for_control = WaitForMessage(
-        READY_TOPIC,
-        String,
-        ready_all({"rc_override", "manager"}),
-        qos=READY_QOS,
-        timeout=STACK_TIMEOUT,
-        then=[autonomy],
-    )
-
-    # --- 2. wait for the FCU link, then start the control nodes ---
-    wait_for_mavros = WaitForMessage(
-        "/mavros/state",
-        State,
-        lambda msg: msg.connected,
-        description="connected",
-        timeout=MAVROS_TIMEOUT,
-        then=[rc_override, vehicle_manager, wait_for_control],
-    )
+    # Never fires when autonomy is not started (run_autonomy:=false).
+    on_mission_exit = RegisterEventHandler(
+        OnProcessExit(target_action=autonomy, on_exit=end_launch_on_exit))
 
     return LaunchDescription(
         [
@@ -163,6 +159,9 @@ def generate_launch_description():
             log_dir_arg,
             OpaqueFunction(function=_timeline),  # first, so it sees mavros start
             mavros,
-            wait_for_mavros,
+            rc_override,
+            vehicle_manager,
+            autonomy,
+            on_mission_exit,
         ]
     )

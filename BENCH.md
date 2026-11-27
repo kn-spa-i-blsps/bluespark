@@ -43,9 +43,10 @@ $ ./bs start
 Starting the stack. Session logs: logs/2026-11-24_01-11-16/
 Building the workspace (colcon)...
 [ OK ] Workspace built
-[ OK ] mavros started, waiting for the Pixhawk...
-[ OK ] Pixhawk connected
-[ OK ] Control nodes ready
+Waiting for mavros, the Pixhawk and the control nodes (up to 60 s)...
+[ OK ] mavros running
+[ OK ] Flight controller connected
+[ OK ] Control services available
 
 READY.  Next: ./bs test   or   ./bs mission <name>   (./bs missions lists them)
 ```
@@ -152,9 +153,10 @@ same: `./bs test`, `./bs mission <name>`, `./bs pwm ...`, `./bs logs`, `./bs sto
 $ ./bs sim
 [ OK ] Simulation is up: Gazebo + ArduSub SITL in bs_sim
 Starting the stack (SIMULATION, ArduSub SITL). Session logs: logs/...
-[ OK ] mavros started, waiting for the ArduSub SITL...
-[ OK ] ArduSub SITL connected
-[ OK ] Control nodes ready
+Waiting for mavros, the ArduSub SITL and the control nodes (up to 60 s)...
+[ OK ] mavros running
+[ OK ] Flight controller connected
+[ OK ] Control services available
 ```
 
 - Before starting, `./bs sim` checks that `bs_sim`, Gazebo and ArduSub/MAVProxy

@@ -2,6 +2,7 @@
 vehicle — manual control of the running governer stack, one short command each.
 
     ros2 run bluespark_bringup vehicle status
+    ros2 run bluespark_bringup vehicle ready --timeout 60   # wait until the stack is usable
     ros2 run bluespark_bringup vehicle arm
     ros2 run bluespark_bringup vehicle disarm          # disarm + thrusters to 1500
     ros2 run bluespark_bringup vehicle mode MANUAL
@@ -63,6 +64,15 @@ def cmd_status(v, _args):
     if missing:
         print(f"MISSING    {', '.join(missing)}")
     return state is not None and state.connected and not missing
+
+
+def cmd_ready(v, args):
+    """Wait for the stack, one line per step (./bs start shows them).
+    A failed step prints its reason: [FAIL] <step>: <detail>."""
+    for step, ok, detail in v.wait_ready(args.timeout):
+        if not ok_line(ok, step if ok else f"{step}: {detail}"):
+            return False
+    return True
 
 
 def cmd_arm(v, _args):
@@ -165,6 +175,8 @@ def main(argv=None):
     parser = argparse.ArgumentParser(prog="vehicle", description="Manual control of the governer stack.")
     sub = parser.add_subparsers(dest="command", required=True)
     sub.add_parser("status", help="connection, armed, mode, thrusters, battery, nodes")
+    p = sub.add_parser("ready", help="wait until mavros, the FCU link and the control services are up")
+    p.add_argument("--timeout", type=float, default=60.0, help="seconds for all steps (default 60)")
     sub.add_parser("arm", help="arm (answer from the Pixhawk)")
     sub.add_parser("disarm", help="disarm + all thrusters to 1500")
     p = sub.add_parser("mode", help="set flight mode, e.g. MANUAL, STABILIZE, ALT_HOLD")
@@ -180,6 +192,7 @@ def main(argv=None):
 
     commands = {
         "status": cmd_status,
+        "ready": cmd_ready,
         "arm": cmd_arm,
         "disarm": cmd_disarm,
         "mode": cmd_mode,

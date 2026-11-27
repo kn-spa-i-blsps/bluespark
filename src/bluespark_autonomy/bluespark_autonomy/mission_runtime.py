@@ -13,13 +13,18 @@ A mission file builds its tree and calls run_mission():
 
 run_mission():
   - creates the node and the BlackboardManager,
-  - sets the tree up and waits until every service the behaviours use exists;
-    missing after setup_timeout -> the mission FAILS before doing anything,
+  - sets the tree up, then waits until the FCU is connected (/mavros/state) and
+    every service the behaviours use exists. The launch starts the mission
+    together with mavros and the control nodes, so this wait is what orders the
+    startup. setup_timeout is ONE budget for all of it (tree setup + FCU +
+    services); not ready in time -> the mission FAILS before doing anything.
+    It is a ROS parameter (-p setup_timeout:=45.0, declared by py_trees_ros),
+    default: the run_mission() argument,
   - logs every status change of every behaviour (RUNNING / SUCCESS / FAILURE),
     so the ./bs session timeline shows what the tree did and when,
   - ticks the tree until the ROOT finishes, ONCE, then exits:
         root SUCCESS -> exit code 0
-        setup failed -> exit code 2   (services missing)
+        setup failed -> exit code 2   (FCU not connected / services missing)
         root FAILURE -> exit code 3   (a behaviour failed: the mission stops there)
         Ctrl+C       -> exit code 130
         crash        -> exit code 1   (uncaught exception, traceback in the log)
@@ -35,7 +40,10 @@ import traceback
 import py_trees
 import py_trees_ros.trees
 import rclpy
+from mavros_msgs.msg import State
 from rclpy.executors import ExternalShutdownException
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
+from rclpy.task import Future
 
 from bluespark_autonomy.blackboard_manager import BlackboardManager
 
@@ -75,6 +83,30 @@ class TransitionLogger:
                 self.logger.info(text)
 
 
+def wait_for_fcu(node, timeout):
+    """Spin until /mavros/state says connected. Returns True if it did in time."""
+    connected = Future()
+
+    def on_state(msg):
+        if msg.connected and not connected.done():
+            connected.set_result(True)
+
+    # mavros publishes it latched and only on heartbeats / changes, so subscribe
+    # the same way to get the current state at once.
+    qos = QoSProfile(
+        depth=1,
+        reliability=ReliabilityPolicy.RELIABLE,
+        durability=DurabilityPolicy.TRANSIENT_LOCAL,
+    )
+    sub = node.create_subscription(State, "/mavros/state", on_state, qos)
+    try:
+        # Returns on connected, timeout or rclpy shutdown (Ctrl+C).
+        rclpy.spin_until_future_complete(node, connected, timeout_sec=timeout)
+    finally:
+        node.destroy_subscription(sub)
+    return connected.done()
+
+
 def wait_for_services(node, timeout):
     """Wait until every service client of the node sees its server.
     Returns the names of the services still missing after timeout."""
@@ -97,13 +129,28 @@ def run_mission(name, create_tree, period_ms=100, setup_timeout=15.0, args=None)
         root = create_tree(node)
         tree = py_trees_ros.trees.BehaviourTree(root=root)
 
+        start = time.monotonic()  # setup_timeout covers ALL setup steps from here
         try:
             tree.setup(node=node, timeout=setup_timeout)
         except Exception as exc:  # noqa: BLE001 - any setup problem ends the mission
             logger.error(f"Mission setup failed: {exc}")
             exit_code = EXIT_SETUP_FAILED
             return
-        missing = wait_for_services(node, setup_timeout)
+        # py_trees_ros declares the setup_timeout parameter in setup() (default:
+        # our argument); a value from the launch / command line wins. Read it
+        # back so tree setup + FCU + services share that one budget.
+        setup_timeout = node.get_parameter("setup_timeout").get_parameter_value().double_value
+        end = start + setup_timeout
+        logger.info(f"Waiting for the FCU and services (up to {setup_timeout:g} s)...")
+        if not wait_for_fcu(node, max(0.0, end - time.monotonic())):
+            if not rclpy.ok():
+                exit_code = EXIT_INTERRUPTED
+                return
+            logger.error(
+                f"Mission setup failed: FCU not connected after {setup_timeout:g} s (/mavros/state)")
+            exit_code = EXIT_SETUP_FAILED
+            return
+        missing = wait_for_services(node, max(0.0, end - time.monotonic()))
         if missing:
             logger.error(f"Mission setup failed, services not available: {', '.join(missing)}")
             exit_code = EXIT_SETUP_FAILED
@@ -138,6 +185,5 @@ def run_mission(name, create_tree, period_ms=100, setup_timeout=15.0, args=None)
             except Exception:  # noqa: BLE001 - shutting down anyway
                 pass
         node.destroy_node()
-        if rclpy.ok():
-            rclpy.shutdown()
+        rclpy.try_shutdown()
         sys.exit(exit_code)

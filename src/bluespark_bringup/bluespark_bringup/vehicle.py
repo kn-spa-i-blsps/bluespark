@@ -13,11 +13,12 @@ Thrusters go through rc_override_node (/control/set_<axis>).
 import time
 
 import rclpy
-from bluespark_interfaces.srv import SetRCOverride
 from mavros_msgs.msg import OverrideRCIn, State
 from mavros_msgs.srv import CommandBool, SetMode
-from rclpy.qos import QoSProfile, ReliabilityPolicy
+from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
 from sensor_msgs.msg import BatteryState
+
+from bluespark_interfaces.srv import SetRCOverride
 
 # Index in this tuple = RC channel index in /mavros/rc/override (rc_override_node).
 AXES = ("pitch", "roll", "heave", "yaw", "surge", "sway")
@@ -29,6 +30,14 @@ PWM_MIN, PWM_MAX = 1100, 1900
 STACK_NODES = ("mavros", "rc_override_node", "vehicle_manager_node")
 
 SENSOR_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
+# mavros publishes /mavros/state latched (reliable + transient_local) and only on
+# heartbeats / changes: without an FCU a volatile subscriber gets nothing at all.
+# This one gets the last state at once, e.g. "connected: false".
+STATE_QOS = QoSProfile(
+    depth=1,
+    reliability=ReliabilityPolicy.RELIABLE,
+    durability=DurabilityPolicy.TRANSIENT_LOCAL,
+)
 
 
 class Vehicle:
@@ -37,7 +46,7 @@ class Vehicle:
         self.state = None
         self.rc = None
         self.battery = None
-        node.create_subscription(State, "/mavros/state", self._on_state, SENSOR_QOS)
+        node.create_subscription(State, "/mavros/state", self._on_state, STATE_QOS)
         node.create_subscription(OverrideRCIn, "/mavros/rc/override", self._on_rc, SENSOR_QOS)
         node.create_subscription(BatteryState, "/mavros/battery", self._on_battery, SENSOR_QOS)
         self.arming = node.create_client(CommandBool, "/mavros/cmd/arming")
@@ -135,6 +144,28 @@ class Vehicle:
         """Disarm first (stops the thrusters immediately), then neutral PWM so
         a later arm does not jump. Returns [(ok, text), ...]."""
         return [self.set_armed(False), self.neutral()]
+
+    def wait_ready(self, timeout):
+        """Wait until the stack is usable, all steps within `timeout` s.
+        Yields (step, ok, detail) as each step finishes, stops at the first
+        failure. Nothing in the launch orders the startup, so this is how
+        ./bs start (and anyone else) knows the stack is ready."""
+        end = time.monotonic() + timeout
+
+        def left():
+            return max(0.0, end - time.monotonic())
+
+        ok = self.spin_until(lambda: self.state is not None, left())
+        yield "mavros running", ok, "no /mavros/state (mavros not running?)"
+        if not ok:
+            return
+        ok = self.spin_until(lambda: self.state is not None and self.state.connected, left())
+        yield "Flight controller connected", ok, "/mavros/state says connected = False"
+        if not ok:
+            return
+        clients = (self.arming, self.mode, *self.axes.values())
+        missing = [c.srv_name for c in clients if not c.wait_for_service(timeout_sec=left())]
+        yield "Control services available", not missing, f"missing: {', '.join(missing)}"
 
     def stack_nodes(self, wait=4.0):
         """Returns (present, missing) names from STACK_NODES. Waits up to `wait`

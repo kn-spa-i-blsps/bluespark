@@ -22,16 +22,14 @@ them should also be listed here.
       `rclpy.init(signal_handler_options=SignalHandlerOptions.NO)` and handle SIGINT/SIGTERM
       ourselves in every node (control nodes, missions).
       In prod `run_governer.sh` disarms before stopping the nodes; bench/manual runs have no safety net.
-- [ ] **Mission crash is not noticed by the supervisor.** Add `on_exit=Shutdown()` to the autonomy
-      node in `governer.launch.py`. Must go together with changing `restart:` for the governer in
-      `docker-compose.prod.yml`, otherwise a cleanly finished mission restarts forever.
-      Note: `Shutdown()` makes `ros2 launch` exit with **0**, so `run_governer.sh` cannot tell a crashed
-      mission from a finished one. A crash needs a non-zero exit (e.g. a failed action future, like
-      the timeout in `bluespark_bringup/wait_for.py`).
+- [x] **Mission crash is not noticed by the supervisor.** Fixed: the mission's exit ends
+      `governer.launch.py` (`bluespark_bringup/launch_exit.py`): mission rc 0 -> launch rc 0,
+      else launch rc 1. `run_governer.sh` stays idle after rc 0 instead of exiting, so docker
+      (`restart: unless-stopped`) does not fly the mission again.
 - [x] **Mission starts after a fixed 12 s, not after the Pixhawk is connected.** If mavros is not
-      connected yet, `ArmRobot` fails and the mission ends without doing anything. Wait for
-      `state/connected` before arming. Fixed: `governer.launch.py` now waits for `/mavros/state`
-      `connected` and for both control nodes on `/bluespark/ready` (`bluespark_bringup/wait_for.py`).
+      connected yet, `ArmRobot` fails and the mission ends without doing anything. Fixed:
+      the launch starts everything at once and the mission (`mission_runtime.run_mission`)
+      waits up to `setup_timeout` for `/mavros/state` connected and for its services.
 - [ ] **`/manager/set_arming` and `/manager/set_mode` always report success**, before mavros answers.
       The tree is fine (`ArmRobot` / `SetFlightMode` call mavros directly and check the result),
       but `run_governer.sh` disarms through `/manager/...`, so a failed disarm goes unnoticed.

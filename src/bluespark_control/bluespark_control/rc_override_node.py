@@ -17,7 +17,6 @@ To use call service: control/set_[degree of freedom] with given PWM value betwee
 # - Confirm RCMAP_* params in QGC match the channel mapping below, then drop this note.
 # - Confirm the heave direction (> 1500 up or down?), comments in the repo disagree.
 
-import os
 import signal
 import time
 
@@ -25,19 +24,8 @@ import rclpy
 from mavros_msgs.msg import OverrideRCIn
 from rclpy.executors import ExternalShutdownException
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
 
 from bluespark_interfaces.srv import SetRCOverride
-
-# Readiness announcement read by governer.launch.py (bluespark_bringup/wait_for.py).
-# transient_local = latched, so a late subscriber still receives it.
-READY_TOPIC = "/bluespark/ready"
-READY_QOS = QoSProfile(
-    depth=1,
-    reliability=ReliabilityPolicy.RELIABLE,
-    durability=DurabilityPolicy.TRANSIENT_LOCAL,
-)
 
 
 # TODO: add dead man swithc to avoid giving power to engines if exception is thrown
@@ -75,16 +63,18 @@ class RCOverrideNode(Node):
             SetRCOverride, "control/set_sway", self.cb_sway
         )
 
-        # All services exist -> tell the launch we are ready. Repeated every
-        # second: a single latched message was sometimes lost (see wait_for.py).
-        self.ready_pub = self.create_publisher(String, READY_TOPIC, READY_QOS)
-        self.announce_ready()
-        self.ready_timer = self.create_timer(1.0, self.announce_ready)
-
-    def announce_ready(self):
-        self.ready_pub.publish(String(data="rc_override"))
+        # The node does not wait for mavros: it may start first, the overrides
+        # simply reach nobody until mavros subscribes. Only log when that changes.
+        self.mavros_listening = None
 
     def publish_rc_state(self):
+        listening = self.rc_pub.get_subscription_count() > 0
+        if listening != self.mavros_listening:
+            self.mavros_listening = listening
+            if listening:
+                self.get_logger().info("mavros subscribed to /mavros/rc/override")
+            else:
+                self.get_logger().warn("Waiting for mavros: nobody subscribes /mavros/rc/override")
         msg = OverrideRCIn()
         msg.channels = self.rc_channels
         self.rc_pub.publish(msg)
@@ -153,10 +143,8 @@ def main(args=None):
 
         time.sleep(0.1)
         node.destroy_node()
-        try:
-            rclpy.shutdown()
-        except Exception:
-            pass
+        
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

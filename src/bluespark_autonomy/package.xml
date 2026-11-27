@@ -8,6 +8,7 @@
   <license>TODO: License declaration</license>
   <depend>rclpy</depend>
   <depend>bluespark_interfaces</depend>
+  <depend>mavros_msgs</depend>
 
   <exec_depend>python3-py-trees</exec_depend>
   <exec_depend>python3-py-trees-ros</exec_depend>

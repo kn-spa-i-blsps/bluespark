@@ -14,7 +14,7 @@
     <exec_depend>bluespark_autonomy</exec_depend>
     <exec_depend>mavros</exec_depend>
     <exec_depend>ros2launch</exec_depend>
-    <!-- Used by bluespark_bringup/wait_for.py and governer.launch.py -->
+    <!-- Used by the launch files and bluespark_bringup/launch_exit.py -->
     <exec_depend>launch</exec_depend>
     <exec_depend>launch_ros</exec_depend>
     <exec_depend>rclpy</exec_depend>

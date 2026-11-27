@@ -3,20 +3,9 @@ import signal
 import rclpy
 from mavros_msgs.msg import State
 from mavros_msgs.srv import CommandBool, SetMode
-from rclpy.executors import ExternalShutdownException
+from rclpy.executors import SingleThreadedExecutor
 from rclpy.node import Node
-from rclpy.qos import DurabilityPolicy, QoSProfile, ReliabilityPolicy
-from std_msgs.msg import String
 from std_srvs.srv import SetBool
-
-# Readiness announcement read by governer.launch.py (bluespark_bringup/wait_for.py).
-# transient_local = latched, so a late subscriber still receives it.
-READY_TOPIC = "/bluespark/ready"
-READY_QOS = QoSProfile(
-    depth=1,
-    reliability=ReliabilityPolicy.RELIABLE,
-    durability=DurabilityPolicy.TRANSIENT_LOCAL,
-)
 
 """
 Arming, disarming and mode setting needed to use rc_override node.
@@ -39,7 +28,6 @@ To use call service:
 #   have no such safety net.)
 # - The three nodes in this process get the same name from the launch file
 #   (name='vehicle_manager_node'). Remove name= from the launch or merge them into one node.
-# - StateListener logs every /mavros/state message; log only on change.
 # - Decide if this proxy is needed at all, or the tree should call mavros directly.
 
 
@@ -50,6 +38,7 @@ class StateListener(Node):
         super().__init__("state_listener")
 
         self.current_state = State()
+        self.last_logged = None  # (connected, armed, mode) of the last log line
 
         # Subscription of /mavros/state: connected, armed, mode
         self.stat_subscirber = self.create_subscription(
@@ -57,11 +46,14 @@ class StateListener(Node):
         )
 
     def state_callback(self, msg):
+        # Log only changes (mavros publishes this at ~1 Hz).
+        key = (msg.connected, msg.armed, msg.mode)
+        if key != self.last_logged:
+            self.get_logger().info(
+                f"Connected: {msg.connected}, Armed: {msg.armed}, Mode: {msg.mode}"
+            )
+            self.last_logged = key
         self.current_state = msg
-        # Publishing received state of the robot
-        self.get_logger().info(
-            f"Connected: {msg.connected}, Armed: {msg.armed}, Mode: {msg.mode}"
-        )
 
 
 class ArmingNode(Node):
@@ -117,7 +109,7 @@ class ArmingNode(Node):
         self.try_to_arm(requested_state)
 
         response.success = True
-        response.message = f"Command passed to mavros."
+        response.message = "Command passed to mavros."
 
         return response
 
@@ -188,17 +180,10 @@ def main(args=None):
     arming_node = ArmingNode()
     state_listener_node = StateListener()
 
-    executor = rclpy.executors.SingleThreadedExecutor()
+    executor = SingleThreadedExecutor()
     executor.add_node(mode_node)
     executor.add_node(arming_node)
     executor.add_node(state_listener_node)
-
-    # All three nodes and their services exist -> tell the launch we are ready.
-    # Repeated every second: a single latched message was sometimes lost
-    # (see bluespark_bringup/wait_for.py).
-    ready_pub = arming_node.create_publisher(String, READY_TOPIC, READY_QOS)
-    ready_pub.publish(String(data="manager"))
-    arming_node.create_timer(1.0, lambda: ready_pub.publish(String(data="manager")))
 
     def handle_sigterm(signum, frame):
         raise KeyboardInterrupt()
@@ -217,10 +202,8 @@ def main(args=None):
         mode_node.destroy_node()
         arming_node.destroy_node()
         state_listener_node.destroy_node()
-        try:
-            rclpy.shutdown()
-        except Exception:
-            pass
+        
+        rclpy.try_shutdown()
 
 
 if __name__ == "__main__":

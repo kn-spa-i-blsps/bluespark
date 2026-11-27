@@ -5,7 +5,11 @@ Low-level control layer between the autonomy (behaviour tree) and MAVROS. Two ex
 - `vehicle_manager_node` - arming / disarming and flight mode (StateListener, ArmingNode, SetModeNode in one process)
 - `rc_override_node` - sends PWM to the thrusters through RC override
 
-On the vehicle both are started by `bluespark_bringup/governer.launch.py`
+On the vehicle both are started by `bluespark_bringup/governer.launch.py`, together
+with mavros and without waiting for it: their mavros clients wait for the service on
+each call, and the overrides reach the Pixhawk as soon as mavros subscribes. The
+launch respawns them if they die. Check that the whole stack is up with
+`ros2 run bluespark_bringup vehicle ready`.
 
 ---
 

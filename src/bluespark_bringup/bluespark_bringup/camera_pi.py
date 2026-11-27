@@ -4,8 +4,9 @@ camera_pi.py — shared launch logic for the camera Raspberry Pis (front, side, 
 Every camera Pi runs the same thing:
   1. (tcp mode only) rpicam-vid — MJPEG TCP stream server, respawned if it exits
   2. camera_node — reads the camera, publishes <ns>/camera/image_raw
-  3. wait for the first frame on /<ns>/camera/image_raw
-  4. the role's detectors (YOLO, pipeline, ...), under the same namespace
+  3. the role's detectors (YOLO, pipeline, ...), under the same namespace
+All start at once: the detectors just subscribe camera/image_raw and work as
+soon as frames arrive.
 
 Only the namespace, frame_id and detector list differ, so each <role>.launch.py
 is just:
@@ -22,10 +23,9 @@ All launch arguments stay overridable from the command line, e.g.:
     ros2 launch bluespark_bringup front.launch.py camera_mode:=usb fps:=15
     ros2 launch bluespark_bringup front.launch.py --show-args
 
-If no frame arrives within CAMERA_TIMEOUT, the launch exits with return code 1
-(see wait_for.py). In prod, docker compose (restart: unless-stopped) then
-restarts the container, so a dead camera is retried instead of silently
-producing nothing.
+If camera_node gets no frame for CAMERA_TIMEOUT (at startup or later), it exits
+with code 1 and the launch starts it again (respawn), so a dead camera is
+retried instead of silently producing nothing. The detectors keep running.
 """
 
 from typing import List
@@ -36,13 +36,12 @@ from launch.conditions import IfCondition
 from launch.substitutions import LaunchConfiguration, PythonExpression
 from launch_ros.actions import Node, PushRosNamespace
 from launch_ros.parameter_descriptions import ParameterValue
-from sensor_msgs.msg import Image
 
-from bluespark_bringup.wait_for import WaitForMessage
-
-# camera_node started -> first image published (seconds). Covers rpicam-vid
-# startup, the TCP connect retries and the 2 s Picamera2 warm-up in rpi mode.
+# camera_node: longest time without a frame before it gives up (seconds). Covers
+# rpicam-vid startup, the TCP connect retries and the 2 s Picamera2 warm-up.
 CAMERA_TIMEOUT = 20.0
+# Delay before a camera_node that gave up is started again (seconds).
+RESPAWN_DELAY = 2.0
 
 
 def camera_pi_launch(
@@ -51,8 +50,7 @@ def camera_pi_launch(
     """Camera stream + camera_node + `detectors`, all under `namespace`.
 
     `detectors` use relative topics (camera/image_raw, detected_objects, ...),
-    which resolve under the namespace. They start once the camera delivers its
-    first frame.
+    which resolve under the namespace. They start together with the camera.
     """
     args = [
         DeclareLaunchArgument(
@@ -139,21 +137,18 @@ def camera_pi_launch(
                         ),
                         "fps": ParameterValue(fps, value_type=float),
                         "stream_port": ParameterValue(stream_port, value_type=int),
+                        "frame_timeout": CAMERA_TIMEOUT,
                     }
                 ],
                 output="screen",
+                # Gives up after CAMERA_TIMEOUT without frames -> started again.
+                respawn=True,
+                respawn_delay=RESPAWN_DELAY,
             ),
         ]
     )
 
-    # --- 3 + 4. Start the detectors once the camera really produces frames.
-    wait_for_camera = WaitForMessage(
-        ["/", ns, "/camera/image_raw"],
-        Image,
-        lambda _msg: True,
-        description="first frame",
-        timeout=CAMERA_TIMEOUT,
-        then=[GroupAction([PushRosNamespace(ns), *detectors])],
-    )
+    # --- 3. detectors, same namespace, no waiting.
+    detector_group = GroupAction([PushRosNamespace(ns), *detectors])
 
-    return LaunchDescription([*args, camera_stream, camera, wait_for_camera])
+    return LaunchDescription([*args, camera_stream, camera, detector_group])

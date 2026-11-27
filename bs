@@ -31,7 +31,8 @@ COMPOSE=(docker compose -f docker-compose.bench.yml)
 CONTAINER=bluespark_bench
 LOGS=logs
 CURRENT="$LOGS/.current"   # path of the running session, e.g. logs/2026-11-23_21-10-00
-START_TIMEOUT=600          # s: colcon build + Pixhawk + control nodes
+START_TIMEOUT=600          # s: colcon build
+READY_TIMEOUT=60           # s: after the build: mavros + Pixhawk + control nodes
 
 # Simulation (./bs sim): Gazebo + ArduSub SITL run in the bs_sim container
 # (repo bluespark-simulation, started by hand there); its MAVProxy forwards
@@ -167,31 +168,19 @@ cmd_start() {
 
 mode_name() { [ "$1" = sim ] && echo "SIMULATION, ArduSub SITL" || echo "Pixhawk"; }
 
-# Watch the container log until the stack is ready or failed; print the steps.
+# Wait for the build (container log), then for the stack itself (vehicle ready):
+# the launch starts every node at once, so readiness is checked from outside.
 follow_start() {
     local mode="$1" fc="Pixhawk"
     [ "$mode" = sim ] && fc="ArduSub SITL"
     local since; since="$(docker inspect -f '{{.State.StartedAt}}' "$CONTAINER")"
-    local t0=$SECONDS
-    shown="" log=""
-    step() {  # step <id> <pattern> <message>: print the message once, when the pattern shows up
-        if [[ "$shown" != *"<$1>"* ]] && grep -q "$2" <<<"$log"; then
-            ok "$3"; shown+="<$1>"
-        fi
-    }
+    local t0=$SECONDS log=""
     say "Building the workspace (colcon)..."
     while :; do
         log="$(docker logs --since "$since" "$CONTAINER" 2>&1)"
-        step build  "^Summary: .* finished"        "Workspace built"
-        step wait   "Waiting for /mavros/state"     "mavros started, waiting for the $fc..."
-        step fcu    "Got /mavros/state"             "$fc connected"
-        if grep -q "Got /bluespark/ready" <<<"$log"; then
-            ok "Control nodes ready"
-            echo
-            [ "$mode" = sim ] && say "SIMULATION: watch the vehicle in Gazebo."
-            say "READY.  Next: ./bs test   or   ./bs mission <name>   (./bs missions lists them)"
-            say "        Manual: ./bs arm | ./bs althold | ./bs pwm surge 1600 | ./bs disarm"
-            return 0
+        if grep -q "^Summary: .* finished" <<<"$log"; then
+            ok "Workspace built"
+            break
         fi
         if grep -qE "Failed +<<<|Aborted +<<<" <<<"$log"; then
             fail "The code does not build:"
@@ -199,28 +188,47 @@ follow_start() {
             echo "Full log: docker logs $CONTAINER"
             return 1
         fi
-        if grep -q "Caught exception in launch\|Timed out after" <<<"$log" || ! running; then
-            fail "The stack did not come up:"
-            grep -E "Timed out|Caught exception|ERROR|Error" <<<"$log" | tail -8
-            if grep -q "Timed out.*/mavros/state" <<<"$log"; then
-                echo
-                if [ "$mode" = sim ]; then
-                    say "No MAVLink from ArduSub SITL. In $SIM_CONTAINER: is run_ardusub.sh"
-                    say "at the MANUAL> prompt? Restarted ArduSub? Then: ./bs stop && ./bs sim"
-                else
-                    say "No Pixhawk. Check the USB cable and power, then: ls /dev/ttyACM*"
-                    say "Then: ./bs stop && ./bs start"
-                fi
-            fi
+        if ! running; then
+            fail "The container stopped:"
+            tail -8 <<<"$log"
             echo "Full log: docker logs $CONTAINER"
             return 1
         fi
         if (( SECONDS - t0 > START_TIMEOUT )); then
-            fail "Not ready after ${START_TIMEOUT} s. See: docker logs $CONTAINER"
+            fail "Not built after ${START_TIMEOUT} s. See: docker logs $CONTAINER"
             return 1
         fi
         sleep 1
     done
+
+    say "Waiting for mavros, the $fc and the control nodes (up to ${READY_TIMEOUT} s)..."
+    local out rc
+    # pipefail (set at the top): rc is vehicle's exit code, not tee's.
+    out="$(bringup vehicle ready --timeout "$READY_TIMEOUT" | tee /dev/stderr)"
+    rc=$?
+    if [ "$rc" -eq 0 ]; then
+        echo
+        [ "$mode" = sim ] && say "SIMULATION: watch the vehicle in Gazebo."
+        say "READY.  Next: ./bs test   or   ./bs mission <name>   (./bs missions lists them)"
+        say "        Manual: ./bs arm | ./bs althold | ./bs pwm surge 1600 | ./bs disarm"
+        return 0
+    fi
+    fail "The stack did not come up."
+    if ! running; then
+        echo "The container stopped:"
+        docker logs --since "$since" "$CONTAINER" 2>&1 | grep -E "ERROR|Error|exception" | tail -8
+    elif grep -q "FAIL.*Flight controller connected" <<<"$out"; then
+        echo
+        if [ "$mode" = sim ]; then
+            say "No MAVLink from ArduSub SITL. In $SIM_CONTAINER: is run_ardusub.sh"
+            say "at the MANUAL> prompt? Restarted ArduSub? Then: ./bs stop && ./bs sim"
+        else
+            say "No Pixhawk. Check the USB cable and power, then: ls /dev/ttyACM*"
+            say "Then: ./bs stop && ./bs start"
+        fi
+    fi
+    echo "Full log: docker logs $CONTAINER"
+    return 1
 }
 
 cmd_stop() {

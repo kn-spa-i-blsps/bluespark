@@ -6,7 +6,8 @@
 # `ros2 launch governer.launch.py`, while KEEPING the safety/lifecycle logic that
 # launch does not provide:
 #   - distinguish a clean mission finish (rc=0) from a crash (rc!=0)
-#   - on clean finish: stop and exit (do not restart forever)
+#   - on clean finish (mission rc 0): disarm, stop the stack and stay idle
+#     (do not exit: docker would restart the container and fly the mission again)
 #   - on crash: disarm for safety, then restart
 #   - restart-storm guard: give up if the stack keeps dying too fast
 #   - always disarm + set MANUAL before restarting or on Ctrl+C
@@ -40,7 +41,9 @@ fast_crash_count=0
 
 start_stack() {
     echo "-- Launching governer stack --"
-    # One launch brings up mavros + control + autonomy in order.
+    # One launch brings up mavros + control + autonomy at once; the mission
+    # waits for the FCU and its services itself. The launch ends when the
+    # mission ends: rc 0 = mission OK, rc != 0 = failed / crashed.
     ros2 launch bluespark_bringup governer.launch.py &
     LAUNCH_PID=$!
     echo "-- Launch started (PID $LAUNCH_PID) --"
@@ -97,11 +100,18 @@ while true; do
     run_end=$(date +%s)
     uptime=$((run_end - run_start))
 
-    # Clean finish (rc=0): mission done -> tidy up and exit for good.
+    # Clean finish (rc=0): mission done -> tidy up and stay idle. Do NOT exit:
+    # docker-compose.prod.yml has restart: unless-stopped, so exiting would
+    # restart the container and run the mission again. Start a new run with
+    # `docker restart bluespark_governer`.
     if [ "$rc" -eq 0 ]; then
-        echo "-- Launch exited cleanly (rc=0). Mission complete. Exiting. --"
+        echo "-- Launch exited cleanly (rc=0). Mission complete. --"
         disarm
         stop_stack_gracefully
+        echo "-- Idle. Run the mission again with: docker restart bluespark_governer --"
+        LAUNCH_PID=""
+        sleep infinity &
+        wait $!   # interruptible: SIGINT/SIGTERM still run cleanup()
         exit 0
     fi
 

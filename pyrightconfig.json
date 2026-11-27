@@ -3,6 +3,7 @@
   "pythonPlatform": "Linux",
   "extraPaths": [
     "/opt/ros/jazzy/lib/python3.12/site-packages",
+    "build/bluespark_interfaces/rosidl_generator_py",
     "install/bluespark_interfaces/lib/python3.12/site-packages",
     "src/bluespark_autonomy",
     "src/bluespark_bringup",
