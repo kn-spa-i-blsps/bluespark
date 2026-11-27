@@ -30,8 +30,8 @@ them should also be listed here.
       connected yet, `ArmRobot` fails and the mission ends without doing anything. Fixed:
       the launch starts everything at once and the mission (`mission_runtime.run_mission`)
       waits up to `setup_timeout` for `/mavros/state` connected and for its services.
-- [ ] **`/manager/set_arming` and `/manager/set_mode` always report success**, before mavros answers.
-      Nothing depends on it any more: the tree (`ArmRobot` / `SetFlightMode`), `./bs` and
+- [x] **`/manager/set_arming` and `/manager/set_mode` always report success**, before mavros answers.
+      Fixed: `vehicle_manager_node` removed. The tree (`ArmRobot` / `SetFlightMode`), `./bs` and
       `run_governer.sh` (`vehicle disarm`) all call mavros directly and check the result.
 - [ ] Clamp PWM to 1100-1900 in the `control/set_*` services (0 = release stays allowed).
 - [ ] Check ArduSub failsafe parameters in QGC (pilot input / GCS loss, `RC_OVERRIDE_TIME`).
@@ -71,15 +71,14 @@ them should also be listed here.
 
 ## bluespark_control
 
-- [ ] Three nodes in `vehicle_manager_node` get the same name from `name="vehicle_manager_node"`
-      in `governer.launch.py`. Remove `name=` or merge them into one node.
-- [ ] `StateListener` logs every `/mavros/state` message; log only on change.
+- [x] Decide if `vehicle_manager` (proxy to mavros) is needed. Removed: nothing used it any more
+      (the tree went to mavros directly in f429836, `run_governer.sh` uses `vehicle disarm`).
+      Its `StateListener` was the only log of mode changes in prod; `run_governer.sh` now runs
+      `timeline_recorder` (logs/<date>_prod/timeline.log), which logs every state change.
 - [ ] Confirm `RCMAP_*` params in QGC match the channel mapping in the README.
 - [ ] Confirm the heave direction on the bench (> 1500 up or down?); old code comments disagreed.
-- [ ] Decide if `vehicle_manager` (proxy to mavros) is needed, or `run_governer.sh` should call mavros directly.
-- [ ] Cleanup: unused `import os` in `rc_override_node.py`, duplicate dead-man-switch TODO above
-      `RCOverrideNode`, `stat_subscirber` typo, empty test files, `License decaration` typo in `setup.py`.
-      The first point of the TODO block in `vehicle_manager_node.py` is outdated (the tree already checks).
+- [ ] Cleanup: duplicate dead-man-switch TODO above `RCOverrideNode`, empty test files,
+      `License decaration` typo in `setup.py`.
 
 ---
 

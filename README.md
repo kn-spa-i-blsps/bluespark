@@ -48,10 +48,7 @@ This package contains custom ROS 2 interfaces, currently supporting features suc
 
 ## bluespark_control
 
-In this package there are nodes rosposible for low level control over mission of the BlueSpark robot. Their main tasks are: arming (or disarming), status checking (connected or disconnected) and mode setting. To do so they mostly use services launched by mavros, so before using any node from those: **SetModeNode**, **StateListener**,
-**ArmingNode** make sure that the mavros is launched.
-
-Furthermore, in this package there is also **RCOverrideNode**, responsible for sending RC Override channels to the engines. In fact, the node simulates the RC controler in hand of a pilot. It lanuches services of all available degrees of freedom for other nodes to call.
+In this package there is **RCOverrideNode**, responsible for sending RC Override channels to the engines. In fact, the node simulates the RC controler in hand of a pilot. It lanuches services of all available degrees of freedom for other nodes to call.
 
 #### Custom services
 - `SetRCOverride` - setting override using OverrideRCIn mavros service.

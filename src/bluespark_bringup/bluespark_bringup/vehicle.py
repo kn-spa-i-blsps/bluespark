@@ -6,7 +6,7 @@ and by mission_runner (pre-flight check + safety stop after every mission).
 
 Arming and modes go straight to mavros (/mavros/cmd/arming, /mavros/set_mode),
 so the answer comes from the Pixhawk, and the result is confirmed on
-/mavros/state. (/manager/set_arming always answers "success", see TODO.md.)
+/mavros/state.
 Thrusters go through rc_override_node (/control/set_<axis>).
 """
 
@@ -25,9 +25,8 @@ AXES = ("pitch", "roll", "heave", "yaw", "surge", "sway")
 NEUTRAL = 1500
 PWM_MIN, PWM_MAX = 1100, 1900
 
-# Nodes of the governer stack (bluespark_control + mavros). governer.launch.py
-# names all three nodes of vehicle_manager_node "vehicle_manager_node".
-STACK_NODES = ("mavros", "rc_override_node", "vehicle_manager_node")
+# Nodes of the governer stack (bluespark_control + mavros).
+STACK_NODES = ("mavros", "rc_override_node")
 
 SENSOR_QOS = QoSProfile(depth=10, reliability=ReliabilityPolicy.BEST_EFFORT)
 # mavros publishes /mavros/state latched (reliable + transient_local) and only on

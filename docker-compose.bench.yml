@@ -3,12 +3,11 @@
 #
 # EASIEST: use ./bs (see BENCH.md). It runs this file and adds session logs.
 #
-# Brings up the FULL flight-control stack (mavros + rc_override + vehicle_manager)
+# Brings up the FULL flight-control stack (mavros + rc_override_node)
 # but NO mission — so you can run bench tests by hand without hand-starting
 # mavros every time.
 #
-# It uses governer.launch.py with run_autonomy:=false, which starts the stack in
-# the correct staggered order (mavros t=0, rc_override t=3, vehicle_manager t=5)
+# It uses governer.launch.py with run_autonomy:=false, which starts the stack
 # and then just holds — no autonomy_node, no supervisor, no auto-mission.
 #
 # WORKFLOW:
@@ -21,7 +20,7 @@
 #
 #   # need a second terminal (e.g. emergency disarm)? same container, any time:
 #   docker exec -it bluespark_bench bash
-#     ros2 service call /manager/set_arming std_srvs/srv/SetBool "{data: false}"
+#     source install/setup.bash && ros2 run bluespark_bringup vehicle disarm
 #
 #   docker compose -f docker-compose.bench.yml down      # tear it all down
 #

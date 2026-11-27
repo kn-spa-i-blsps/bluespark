@@ -6,18 +6,17 @@ behaviour tree:
 
   mavros            -> talks to the Pixhawk (serial)
   rc_override_node  -> sends PWM to the thrusters (control/set_* services)
-  vehicle_manager   -> arming + mode services (/manager/set_arming, /manager/set_mode)
   autonomy (py_trees) -> the mission behaviour tree   [only if run_autonomy:=true]
 
 Everything starts AT ONCE, the launch does not wait for anything. Each node
 copes with its dependencies itself (ROS 2 style):
-  * rc_override_node / vehicle_manager just start; their mavros clients and
-    publishers work as soon as mavros is there (wait_for_service per call).
+  * rc_override_node just starts; its overrides reach the Pixhawk as soon as
+    mavros subscribes. Arming / modes go straight to mavros (no middleman).
   * the mission (bluespark_autonomy.mission_runtime) waits up to setup_timeout
     for the FCU link (/mavros/state connected) and for every service it uses;
     missing after that -> it exits with code 2 before doing anything.
-  * the control nodes are respawned if they die, so a crash there does not
-    take the whole stack down.
+  * rc_override_node is respawned if it dies, so a crash there does not take
+    the whole stack down.
 Check the stack from outside with:  vehicle ready   (./bs start does that).
 
 Launch return code (read by run_governer.sh):
@@ -61,7 +60,7 @@ from launch_ros.substitutions import FindPackageShare
 # How long the mission waits for the FCU link + its services (seconds). Covers
 # mavros start + Pixhawk connect on the Pi (~30 s worst case seen so far).
 SETUP_TIMEOUT = 45.0
-# Delay before a dead control node is started again (seconds).
+# Delay before a dead rc_override_node is started again (seconds).
 RESPAWN_DELAY = 2.0
 
 
@@ -103,7 +102,7 @@ def generate_launch_description():
     log_dir_arg = DeclareLaunchArgument(
         "log_dir",
         default_value="",
-        description="Session folder for ./bs: if set, timeline_recorder writes "
+        description="Session folder (./bs, run_governer.sh): if set, timeline_recorder writes "
         "<log_dir>/timeline.log. Empty (default) = no recorder, nothing changes.",
     )
 
@@ -119,19 +118,11 @@ def generate_launch_description():
         launch_arguments={"fcu_url": fcu_url}.items(),
     )
 
-    # --- control nodes: no dependency at startup, respawned if they die ---
+    # --- control node: no dependency at startup, respawned if it dies ---
     rc_override = Node(
         package="bluespark_control",
         executable="rc_override_node",
         name="rc_override_node",
-        output="screen",
-        respawn=True,
-        respawn_delay=RESPAWN_DELAY,
-    )
-    vehicle_manager = Node(
-        package="bluespark_control",
-        executable="vehicle_manager_node",
-        name="vehicle_manager_node",
         output="screen",
         respawn=True,
         respawn_delay=RESPAWN_DELAY,
@@ -160,7 +151,6 @@ def generate_launch_description():
             OpaqueFunction(function=_timeline),  # first, so it sees mavros start
             mavros,
             rc_override,
-            vehicle_manager,
             autonomy,
             on_mission_exit,
         ]

@@ -25,7 +25,6 @@ setup(
             # when you type in 'ros2 run bluespark_control rc_override node
             # it would wake the main function from rc_override_node.py
             "rc_override_node = bluespark_control.rc_override_node:main",
-            "vehicle_manager_node = bluespark_control.vehicle_manager_node:main",
         ],
     },
 )

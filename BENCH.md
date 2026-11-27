@@ -60,7 +60,7 @@ with `[FAIL]`, it says why; see [Troubleshooting](#troubleshooting).
 $ ./bs test
 Bench test: thrusters WILL spin (1600 for 2 s per axis). Ctrl+C = stop + disarm.
 
- 1. Stack nodes running          OK   mavros, rc_override_node, vehicle_manager_node
+ 1. Stack nodes running          OK   mavros, rc_override_node
  2. Pixhawk connected            OK
  3. Mode MANUAL                  OK   mode MANUAL
  4. Arm                          OK   armed

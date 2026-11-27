@@ -30,6 +30,20 @@ colcon build --symlink-install
 echo "-- Loading built BlueSpark environment --"
 source "$WORKSPACE/install/setup.bash"
 
+# Session log, like ./bs sessions: timeline_recorder writes every node's log
+# line and every /mavros/state and thruster change to $SESSION/timeline.log.
+# One folder per container start; restarts after a crash append to it. Plain
+# text, a few MB per hour at most.
+SESSION="$WORKSPACE/logs/$(date +%Y-%m-%d_%H-%M-%S)_prod"
+mkdir -p "$SESSION"
+{
+    echo "started   $(date '+%Y-%m-%d %H:%M:%S')"
+    echo "host      $(hostname)"
+    echo "mode      prod  (run_governer.sh)"
+    echo "git       $(git -C "$WORKSPACE" rev-parse --short HEAD 2>/dev/null) on $(git -C "$WORKSPACE" rev-parse --abbrev-ref HEAD 2>/dev/null)"
+} > "$SESSION/session_info.txt"
+echo "-- Session log: $SESSION/timeline.log --"
+
 # The single launch process we supervise (instead of many node PIDs).
 LAUNCH_PID=""
 
@@ -44,7 +58,7 @@ start_stack() {
     # One launch brings up mavros + control + autonomy at once; the mission
     # waits for the FCU and its services itself. The launch ends when the
     # mission ends: rc 0 = mission OK, rc != 0 = failed / crashed.
-    ros2 launch bluespark_bringup governer.launch.py &
+    ros2 launch bluespark_bringup governer.launch.py log_dir:="$SESSION" &
     LAUNCH_PID=$!
     echo "-- Launch started (PID $LAUNCH_PID) --"
 }
@@ -65,7 +79,7 @@ stop_stack_gracefully() {
     # Belt-and-suspenders: make sure no stragglers survive.
     pkill -f "mavros_node"          2>/dev/null
     pkill -f "rc_override_node"     2>/dev/null
-    pkill -f "vehicle_manager_node" 2>/dev/null
+    pkill -f "timeline_recorder"    2>/dev/null
     pkill -f "autonomy_node"        2>/dev/null
 }
 

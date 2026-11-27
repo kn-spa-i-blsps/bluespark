@@ -1,8 +1,8 @@
 """
 timeline_recorder — writes ONE human-readable, chronological log of a session.
 
-Started by governer.launch.py when log_dir:=<dir> is given (./bs start does
-that), before anything else, so it also catches mavros starting up. Writes
+Started by governer.launch.py when log_dir:=<dir> is given (./bs start and
+run_governer.sh in prod do that), before anything else, so it also catches mavros starting up. Writes
 <log_dir>/timeline.log, one line per event, from all processes together:
 
     01:31:10.330  =====  START mission 01 forwardTurnBack (git 4e95764)  =====
@@ -36,7 +36,7 @@ from rclpy.node import Node
 from rclpy.qos import DurabilityPolicy, HistoryPolicy, QoSProfile, ReliabilityPolicy
 from std_msgs.msg import String
 
-from bluespark_bringup.vehicle import AXES, SENSOR_QOS
+from bluespark_bringup.vehicle import AXES, SENSOR_QOS, STATE_QOS
 
 TIMELINE_TOPIC = "/bluespark/timeline"
 TIMELINE_QOS = QoSProfile(depth=50, reliability=ReliabilityPolicy.RELIABLE)
@@ -47,9 +47,7 @@ ROSOUT_QOS = QoSProfile(
     reliability=ReliabilityPolicy.RELIABLE,
     durability=DurabilityPolicy.TRANSIENT_LOCAL,
 )
-# - state_listener prints /mavros/state every second; the STATE lines already
-#   show every change of it.
-IGNORE_DEFAULT = r"HP: requesting home position|^Connected: (True|False), Armed: "
+IGNORE_DEFAULT = r"HP: requesting home position"
 # Nodes whose INFO lines are only noise here (rosbag lists every topic it
 # subscribes to): only their WARN / ERROR go to the timeline.
 QUIET_NODES = ("rosbag2_recorder", "rosbag2_cpp")
@@ -89,7 +87,7 @@ class TimelineRecorder(Node):
             f"SESSION START {datetime.now():%Y-%m-%d %H:%M:%S} on {socket.gethostname()}"
         )
         self.create_subscription(Log, "/rosout", self.on_rosout, ROSOUT_QOS)
-        self.create_subscription(State, "/mavros/state", self.on_state, SENSOR_QOS)
+        self.create_subscription(State, "/mavros/state", self.on_state, STATE_QOS)
         self.create_subscription(OverrideRCIn, "/mavros/rc/override", self.on_rc, SENSOR_QOS)
         self.create_subscription(String, TIMELINE_TOPIC, self.on_marker, TIMELINE_QOS)
         self.get_logger().info(f"Writing the session timeline to {path}")
