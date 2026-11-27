@@ -59,7 +59,8 @@ services:
         fi
       '
     # docker stop waits this long before SIGKILL (default 10 s). run_governer.sh
-    # needs up to ~12 s to disarm and stop the launch cleanly.
-    stop_grace_period: 20s
+    # needs up to ~38 s to disarm (vehicle disarm, confirmed, + fallback), set
+    # MANUAL and stop the launch cleanly when something is broken; ~5 s normally.
+    stop_grace_period: 40s
 
     restart: unless-stopped

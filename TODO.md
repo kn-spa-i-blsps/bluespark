@@ -31,8 +31,8 @@ them should also be listed here.
       the launch starts everything at once and the mission (`mission_runtime.run_mission`)
       waits up to `setup_timeout` for `/mavros/state` connected and for its services.
 - [ ] **`/manager/set_arming` and `/manager/set_mode` always report success**, before mavros answers.
-      The tree is fine (`ArmRobot` / `SetFlightMode` call mavros directly and check the result),
-      but `run_governer.sh` disarms through `/manager/...`, so a failed disarm goes unnoticed.
+      Nothing depends on it any more: the tree (`ArmRobot` / `SetFlightMode`), `./bs` and
+      `run_governer.sh` (`vehicle disarm`) all call mavros directly and check the result.
 - [ ] Clamp PWM to 1100-1900 in the `control/set_*` services (0 = release stays allowed).
 - [ ] Check ArduSub failsafe parameters in QGC (pilot input / GCS loss, `RC_OVERRIDE_TIME`).
 
@@ -144,8 +144,9 @@ It is in git at `520869f^` (`src/bluespark_peripherals/`, with a README). When i
 
 - [ ] `DEV_TEST.md` runs `benchTest ... skip_fcu:=true`, and `docker-compose.bench.yml` mentions
       `benchTest` in its header. `benchTest` was removed; update both (see `skip_fcu` above).
-- [ ] `run_governer.sh` disarms through `/manager/set_arming`; if `vehicle_manager` is dead the
-      disarm fails silently. Fall back to `/mavros/cmd/arming`.
+- [x] `run_governer.sh` disarms through `/manager/set_arming`; if `vehicle_manager` is dead the
+      disarm fails silently. Fixed: it uses `vehicle disarm` / `vehicle mode MANUAL` (mavros
+      directly, confirmed on `/mavros/state`).
 - [ ] `run_governer.sh` starts with an unexplained `sleep 20`. Document why, or wait for
       `/dev/ttyACM0` / the network instead.
 - [ ] Every container start runs `colcon build`; a commit that does not build means nothing comes

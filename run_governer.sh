@@ -69,15 +69,27 @@ stop_stack_gracefully() {
     pkill -f "autonomy_node"        2>/dev/null
 }
 
+# Uses the `vehicle` CLI of bluespark_bringup (same as ./bs disarm): it talks to
+# mavros directly and confirms the result on /mavros/state, so a failed disarm
+# is printed as [FAIL] instead of going unnoticed. If it fails (including our
+# own code being broken), a plain `ros2 service call` to mavros is tried too.
 disarm() {
-    echo "-- Disarming the vehicle --"
-    timeout 3 ros2 service call /manager/set_arming std_srvs/srv/SetBool \
-        "{data: false}" 2>/dev/null
+    local vehicle
+    vehicle="$(ros2 pkg prefix bluespark_bringup)/lib/bluespark_bringup/vehicle"
+    # Normally each takes ~1-2 s. The timeouts only matter when something is
+    # broken; they are long enough for `vehicle` to print WHY it failed, and keep
+    # cleanup within stop_grace_period in docker-compose.prod.yml (40 s):
+    # disarm 15 s + fallback 10 s (a fresh `ros2 service call` needs ~6 s)
+    # + mode 8 s + stopping the launch 5 s.
+    echo "-- Disarming the vehicle + thrusters to 1500 --"
+    if ! timeout 15 "$vehicle" disarm; then
+        echo "-- WARNING: disarm NOT confirmed, check the vehicle! Trying mavros directly --"
+        timeout 10 ros2 service call /mavros/cmd/arming mavros_msgs/srv/CommandBool \
+            "{value: false}" | grep -E "success|result"
+    fi
 
     echo "-- Setting MANUAL mode --"
-    timeout 3 ros2 service call /manager/set_mode mavros_msgs/srv/SetMode \
-        "{custom_mode: 'MANUAL'}" 2>/dev/null
-    sleep 1
+    timeout 8 "$vehicle" mode MANUAL || echo "-- WARNING: MANUAL mode NOT confirmed --"
 }
 
 cleanup() {

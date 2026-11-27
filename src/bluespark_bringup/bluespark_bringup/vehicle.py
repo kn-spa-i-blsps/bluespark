@@ -102,6 +102,10 @@ class Vehicle:
         res = self._call_all({"x": (self.arming, CommandBool.Request(value=armed))}, timeout)["x"]
         if isinstance(res, str):
             return False, f"{word}: {res}"
+        # Sent anyway (always try to disarm), but without the FCU link mavros
+        # answers with a misleading "rejected": report the real reason.
+        if self.state is None or not self.state.connected:
+            return False, f"{word}: FCU not connected (/mavros/state)"
         if not res.success:
             return False, f"{word}: rejected by the Pixhawk (MAV_RESULT {res.result})"
         if not self.spin_until(lambda: self.state is not None and self.state.armed == armed, 3.0):
@@ -113,6 +117,8 @@ class Vehicle:
         res = self._call_all({"x": (self.mode, SetMode.Request(custom_mode=mode))}, timeout)["x"]
         if isinstance(res, str):
             return False, f"mode {mode}: {res}"
+        if self.state is None or not self.state.connected:  # see set_armed
+            return False, f"mode {mode}: FCU not connected (/mavros/state)"
         if not res.mode_sent:
             return False, f"mode {mode}: not sent (unknown mode name?)"
         if not self.spin_until(lambda: self.state is not None and self.state.mode == mode, 3.0):
